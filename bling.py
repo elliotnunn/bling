@@ -190,6 +190,7 @@ class Compositor(Client, Server, threading.Thread):
     
     def notify_client_dirty(self):
         self.client_dirty.set()
+        print "comp notified"
     
     def __init__(self, width, height, depth, palette):
         # init the super
@@ -216,8 +217,8 @@ class Clock(Client, threading.Thread):
             back_buffer = self.get_buffer(False)
             
             back_buffer.fill((255, 255, 255))
-            sysfont = pygame.font.SysFont("ChicagoFLF", 24)
-            newsurf = sysfont.render("CAPITAgS! " + str(count), True, (0, 0, 0), (255, 255, 255))
+            sysfont = pygame.font.SysFont("ChicagoFLF", 12)
+            newsurf = sysfont.render("AWW " + str(count), True, (0, 0, 0), (255, 255, 255))
             back_buffer.blit(newsurf, (10, 0))
 
             self.swap_buffers()
@@ -233,6 +234,70 @@ class Clock(Client, threading.Thread):
         self.start()
         
 
+class ProtoMenu(Client, threading.Thread):
+    def run(self):
+        while True:
+            self.dirty.wait()
+            self.dirty.clear()
+            
+            # draw a frame!
+            draw_first = self.scroll // self.item_height
+            draw_last = (self.scroll + self.view_height) // self.item_height
+            
+            back_buffer = self.get_buffer(False)
+            
+            for item_index in range(draw_first, draw_last):
+                if item_index == self.selected:
+                    fg = (255, 255, 255); bg = (0, 0, 0);
+                else:
+                    bg = (255, 255, 255); fg = (0, 0, 0);
+                
+                y = item_index * self.item_height - self.scroll
+                
+                pygame.draw.rect(back_buffer, bg, (0, y, 132, self.item_height))
+                text = self.font.render(self.items[item_index], False, fg, bg)
+                back_buffer.blit(text, (4, y))
+            
+            self.swap_buffers()
+            self.am_dirty()
+    
+    def __init__(self, width, height, depth, palette):
+        self.item_count = 9
+        self.items = ["The", "Quick", "Brown", "Fox", "Jumps", "Over", "The", "Lazy", "Dog"]
+        self.view_height = 64
+        self.item_height = 16
+        self.scroll = 0
+        self.selected = 0
+        
+        self.font = pygame.font.SysFont("ChicagoFLF", 12)
+        
+        threading.Thread.__init__(self)
+        Client.__init__(self, width, height, depth, palette)
+        
+        self.dirty = threading.Event()
+        
+        self.daemon = True
+        self.start()
+        self.dirty.set()
+    
+    def event(self, event):
+        do_redraw = False
+        
+        if event == "up":
+            if self.selected > 0:
+                self.selected -= 1
+                do_redraw = True
+                max_scroll = self.selected * self.item_height
+                if self.scroll > max_scroll: self.scroll = max_scroll
+                
+        if event == "down":
+            if self.selected < self.item_count - 1:
+                self.selected += 1
+                do_redraw = True
+                min_scroll = (self.selected + 1) * self.item_height - self.view_height
+                if self.scroll < min_scroll: self.scroll = min_scroll
+        
+        if do_redraw: self.dirty.set()
 
 
 if False:
