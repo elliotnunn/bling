@@ -19,18 +19,26 @@ palette = tuple([(i, i, i) for i in range(0, 255)])
 driver = ST7575Server()
 compositor = Compositor(width = 132, height = 64, depth = 8, palette = palette)
 driver.add_client(compositor)
-clock = ProtoMenu(width = 132, height = 64, depth = 8, palette = palette)
+
+menu = ProtoMenu(width = 132, height = 64, depth = 8, palette = palette)
+compositor.add_client(menu)
+clock = Clock(width = 132, height = 64, depth = 8, palette = palette)
 compositor.add_client(clock)
-time.sleep(0.5)
-# threads should not be daemonised, but that means that I need a working event-passing system!
+
+compositor.notify_client_dirty()
+
 while True:
     for i in range(1, 9):
-        clock.event("down")
-        time.sleep(0.5)
+        time.sleep(1)
+        menu.event("down")
+        clock.dirty.set()
 
     for i in range(1, 9):
-        clock.event("up")
-        time.sleep(0.5)
+        time.sleep(1)
+        menu.event("up")
+        clock.dirty.set()
+
+time.sleep(5)
 
 print 'Deinitialising driver'
 driver.deinit()

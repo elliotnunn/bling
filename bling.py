@@ -8,9 +8,31 @@ import random
 import ctypes
 
 
-class Client:
+class Client(threading.Thread):
+    def run(self):
+        while True:
+            # event will fire to tell us to draw a frame
+            self.dirty.wait()
+            self.dirty.clear()
+            
+            # Don't need to acquire self.buffer_lock because this
+            # is the only place we ever modify self.which_buffer
+            self.draw_frame(self.get_buffer(False))
+            
+            # But to modify which_buffer, we need the lock
+            self.buffer_lock.acquire()
+            self.which_buffer = not self.which_buffer
+            self.buffer_lock.release()
+            
+            # Notify our server, if we have one
+            if self.parent_server != None:
+                self.parent_server.notify_client_dirty()
+    
     def __init__(self, width, height, depth, palette):
-        # BUFFERS
+        threading.Thread.__init__(self)
+        self.daemon = True # this is bad!
+        
+        # set up two buffers
         self.buffer_a = pygame.Surface((width, height), depth=depth)
         self.buffer_b = pygame.Surface((width, height), depth=depth)
         self.buffer_a.set_palette(palette)
@@ -18,22 +40,23 @@ class Client:
         self.which_buffer = True # True means buffer_a is front
         self.buffer_lock = threading.Lock()
         
+        # start life as an orphan
         self.parent_server = None
-    
+        
+        # the thread's main loop will iterate when this event fires
+        # and self.draw_frame(buffer) will get called
+        self.dirty = threading.Event()
+        
+        self.start()
+        
     def get_buffer(self, front):
         if self.which_buffer == front:
             return self.buffer_a
         else:
             return self.buffer_b
     
-    def swap_buffers(self):
-        self.buffer_lock.acquire()
-        self.which_buffer = not self.which_buffer
-        self.buffer_lock.release()
-    
-    def am_dirty(self):
-        if self.parent_server != None:
-            self.parent_server.notify_client_dirty()
+    def draw_frame(self, buffer):
+        "Nothing"
 
 
 class Server:
@@ -64,7 +87,7 @@ class ST7575Server(Server):
         self.libbuff.fling_buffer(client.get_buffer(True).get_buffer().raw) # sloooow??
         client.buffer_lock.release()
     
-    def deinit():
+    def deinit(self):
         self.libbuff.deinit()
 
 
@@ -147,40 +170,25 @@ class Compositor(Client, Server, threading.Thread):
     def prepare_to_draw_frame(self):
         "Nothing"
     
-    def run(self):
-        print "Compositor thread waiting"
-        while True:
-            self.client_dirty.wait() # only if no animation in progress
-            self.client_dirty.clear()
-            
-            # Subclassess will implement this to do animations, etc
-            self.prepare_to_draw_frame()
-            
-            # Don't need to acquire self.buffer_lock because this
-            # is the only place we ever modify self.which_buffer
-            my_back_buffer = self.get_buffer(False)
-            
-            # one day this will be smarter:
-            # - only drawing the topmost fullscreen window and above
-            # - drawing a transformed image at the coordinates set by an animation
-            # my_back_buffer.fill((255, 255, 255))
-            self.client_list_lock.acquire()
-            for client in self.clients:
-                # Client may not swap buffers while we are blitting its front buffer!
-                client.buffer_lock.acquire()
-                client_front_buffer = client.get_buffer(True)
-                my_back_buffer.blit(client_front_buffer, (0, 0))
-                client.buffer_lock.release()
-            
-            self.client_list_lock.release()
-            
-            # Now we acquire the lock so that we don't swap our buffers
-            # while our parent server is accessing them
-            self.buffer_lock.acquire()
-            self.which_buffer = not self.which_buffer
-            self.buffer_lock.release()
-            
-            self.am_dirty()
+    def draw_frame(self, buffer):
+        
+        my_back_buffer = buffer
+        
+        # one day this will be smarter:
+        # - only drawing the topmost fullscreen window and above
+        # - drawing a transformed image at the coordinates set by an animation
+        # my_back_buffer.fill((255, 255, 255))
+        self.client_list_lock.acquire()
+        offset = 0
+        for client in self.clients:
+            # Client may not swap buffers while we are blitting its front buffer!
+            client.buffer_lock.acquire()
+            client_front_buffer = client.get_buffer(True)
+            my_back_buffer.blit(client_front_buffer, (offset, offset))
+            client.buffer_lock.release()
+            offset += 25
+        
+        self.client_list_lock.release()
         
     def add_client(self, client):
         self.client_list_lock.acquire()
@@ -189,77 +197,59 @@ class Compositor(Client, Server, threading.Thread):
         client.parent_server = self
     
     def notify_client_dirty(self):
-        self.client_dirty.set()
-        print "comp notified"
+        self.dirty.set()
     
     def __init__(self, width, height, depth, palette):
         # init the super
         
         Client.__init__(self, width, height, depth, palette)
         Server.__init__(self)
-        threading.Thread.__init__(self)
         
         self.clients = []
         self.client_list_lock = threading.Lock()
         
-        self.client_dirty = threading.Event()
-        
-        self.daemon = True
-        self.start()
 
 
 class Clock(Client, threading.Thread):
-    def run(self):
-        count = 0
-        while True:
-            count += 1
-            
-            back_buffer = self.get_buffer(False)
-            
-            back_buffer.fill((255, 255, 255))
-            sysfont = pygame.font.SysFont("ChicagoFLF", 12)
-            newsurf = sysfont.render("AWW " + str(count), True, (0, 0, 0), (255, 255, 255))
-            back_buffer.blit(newsurf, (10, 0))
-
-            self.swap_buffers()
-            self.am_dirty()
-            
-            #time.sleep(0.5)
+    def draw_frame(self, buffer):
+        back_buffer = buffer
+        
+        bg = (0, 0, 0); fg = (255, 255, 255);
+        
+        back_buffer.fill(bg)
+        sysfont = pygame.font.SysFont("epsysans", 20)
+        newsurf = sysfont.render("Frame: " + str(self.count), False, fg, bg)
+        back_buffer.blit(newsurf, (10, 0))
+        
+        self.count += 1
     
     def __init__(self, width, height, depth, palette):
-        threading.Thread.__init__(self)
         Client.__init__(self, width, height, depth, palette)
+        self.count = 0
+        self.dirty.set()
         
-        self.daemon = True
-        self.start()
-        
+        print pygame.font.get_fonts()
+                
 
 class ProtoMenu(Client, threading.Thread):
-    def run(self):
-        while True:
-            self.dirty.wait()
-            self.dirty.clear()
-            
-            # draw a frame!
-            draw_first = self.scroll // self.item_height
-            draw_last = (self.scroll + self.view_height) // self.item_height
-            
-            back_buffer = self.get_buffer(False)
-            
-            for item_index in range(draw_first, draw_last):
-                if item_index == self.selected:
-                    fg = (255, 255, 255); bg = (0, 0, 0);
-                else:
-                    bg = (255, 255, 255); fg = (0, 0, 0);
-                
-                y = item_index * self.item_height - self.scroll
-                
-                pygame.draw.rect(back_buffer, bg, (0, y, 132, self.item_height))
-                text = self.font.render(self.items[item_index], False, fg, bg)
-                back_buffer.blit(text, (4, y))
-            
-            self.swap_buffers()
-            self.am_dirty()
+    def draw_frame(self, buffer):
+        # draw a frame!
+        draw_first = self.scroll // self.item_height
+        draw_last = (self.scroll + self.view_height) // self.item_height
+    
+        back_buffer = buffer
+    
+        for item_index in range(draw_first, draw_last):
+            if item_index == self.selected:
+                fg = (255, 255, 255); bg = (0, 0, 0);
+            else:
+                bg = (255, 255, 255); fg = (0, 0, 0);
+        
+            y = item_index * self.item_height - self.scroll
+        
+            pygame.draw.rect(back_buffer, bg, (0, y, 132, self.item_height))
+            text = self.font.render(self.items[item_index], False, fg, bg)
+            back_buffer.blit(text, (4, y))
     
     def __init__(self, width, height, depth, palette):
         self.item_count = 9
@@ -271,14 +261,9 @@ class ProtoMenu(Client, threading.Thread):
         
         self.font = pygame.font.SysFont("ChicagoFLF", 12)
         
-        threading.Thread.__init__(self)
         Client.__init__(self, width, height, depth, palette)
-        
-        self.dirty = threading.Event()
-        
-        self.daemon = True
-        self.start()
         self.dirty.set()
+        
     
     def event(self, event):
         do_redraw = False
