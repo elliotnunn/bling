@@ -1,6 +1,6 @@
 #!/bin/sh
 
-cd ~/buff
+cd ~/bling/buff
 
 sync
 

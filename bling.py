@@ -247,7 +247,7 @@ class ProtoMenu(Client, threading.Thread):
         
             y = item_index * self.item_height - self.scroll
         
-            pygame.draw.rect(back_buffer, bg, (0, y, 132, self.item_height))
+            pygame.draw.rect(back_buffer, bg, (0, y, 128, self.item_height))
             text = self.font.render(self.items[item_index], False, fg, bg)
             back_buffer.blit(text, (4, y))
     
@@ -303,7 +303,7 @@ if False:
     # input_server = PygameInputServer()
 
     print 'Initialising Compositor'
-    compositor = Compositor(width = 132, height = 64, depth = 8, palette = palette)
+    compositor = Compositor(width = 128, height = 64, depth = 8, palette = palette)
 
     # print 'Attaching compositor to input server'
     # input_server.add_client(compositor)
@@ -312,7 +312,7 @@ if False:
     driver.add_client(compositor)
 
     print 'Initialising Clock'
-    clock = Clock(width = 132, height = 64, depth = 8, palette = palette)
+    clock = Clock(width = 128, height = 64, depth = 8, palette = palette)
 
     print 'Attaching Clock to Compositor'
     compositor.add_client(clock)

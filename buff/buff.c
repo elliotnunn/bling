@@ -34,7 +34,7 @@ for (int which_lcd_bit=0; which_lcd_bit<8; which_lcd_bit++) {   \
 
 
 #define PAGE_COUNT 8
-#define COL_COUNT 132
+#define COL_COUNT 128
 
 
 // int main(int argc, char **argv) {
@@ -91,12 +91,12 @@ void fling_buffer(char *buffer) {
 	
 	//rand_offset = rand() & 63;
 
-	for (char page=0; page<8; page++) {
+	for (char page=0; page<PAGE_COUNT; page++) {
 		set_pin(A0_PIN, LOW);
-		lcd_jump(page, 0); // jump to the first column of this page
+		lcd_jump(page, 4); // jump to the first column of this page
 		
 		set_pin(A0_PIN, HIGH); // prepare for data!
-		for (char col=0; col<132; col++) {		
+		for (char col=0; col<COL_COUNT; col++) {		
 			page_content = 0;
 			
 			for (char bit=0; bit<8; bit++) {
@@ -155,7 +155,6 @@ void deinit() {
 	bcm2835_gpio_fsel(A0_PIN,  BCM2835_GPIO_FSEL_INPT);
 	bcm2835_gpio_fsel(CLK_PIN, BCM2835_GPIO_FSEL_INPT);
 	bcm2835_gpio_fsel(SI_PIN,  BCM2835_GPIO_FSEL_INPT);
-	set_pin(CS_PIN, HIGH);
 }
 
 
