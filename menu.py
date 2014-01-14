@@ -17,24 +17,24 @@ pygame.font.init()
 print "Initialising Bling!"
 palette = tuple([(i, i, i) for i in range(0, 255)])
 driver = ST7575Server()
-compositor = Compositor(width = 132, height = 64, depth = 8, palette = palette)
+compositor = Compositor(width = 128, height = 64, depth = 8, palette = palette)
 driver.add_client(compositor)
 
-menu = ProtoMenu(width = 132, height = 64, depth = 8, palette = palette)
+menu = ProtoMenu(width = 128, height = 64, depth = 8, palette = palette)
 compositor.add_client(menu)
-clock = Clock(width = 132, height = 64, depth = 8, palette = palette)
+clock = Clock(width = 128, height = 64, depth = 8, palette = palette)
 compositor.add_client(clock)
 
 compositor.notify_client_dirty()
 
 while True:
     for i in range(1, 9):
-        time.sleep(1)
+        time.sleep(0.5)
         menu.event("down")
         clock.dirty.set()
 
     for i in range(1, 9):
-        time.sleep(1)
+        time.sleep(0.5)
         menu.event("up")
         clock.dirty.set()
 

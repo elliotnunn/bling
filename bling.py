@@ -217,9 +217,9 @@ class Clock(Client, threading.Thread):
         bg = (0, 0, 0); fg = (255, 255, 255);
         
         back_buffer.fill(bg)
-        sysfont = pygame.font.SysFont("epsysans", 20)
+        sysfont = pygame.font.SysFont("chicagoflf", 12)
         newsurf = sysfont.render("Frame: " + str(self.count), False, fg, bg)
-        back_buffer.blit(newsurf, (10, 0))
+        back_buffer.blit(newsurf, (2, 2))
         
         self.count += 1
     
