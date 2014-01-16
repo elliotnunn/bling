@@ -186,7 +186,7 @@ class Compositor(Client, Server, threading.Thread):
             client_front_buffer = client.get_buffer(True)
             my_back_buffer.blit(client_front_buffer, (offset, offset))
             client.buffer_lock.release()
-            offset += 25
+            offset += 48
         
         self.client_list_lock.release()
         
@@ -212,32 +212,30 @@ class Compositor(Client, Server, threading.Thread):
 
 class Clock(Client, threading.Thread):
     def draw_frame(self, buffer):
-        back_buffer = buffer
+        buffer.fill(self.bg)
         
-        bg = (0, 0, 0); fg = (255, 255, 255);
-        
-        back_buffer.fill(bg)
-        sysfont = pygame.font.SysFont("chicagoflf", 12)
-        newsurf = sysfont.render("Frame: " + str(self.count), False, fg, bg)
-        back_buffer.blit(newsurf, (2, 2))
+        newsurf = self.font.render("FrmCt=" + str(self.count), False, self.fg, self.bg)
+        buffer.blit(newsurf, (2, 2))
         
         self.count += 1
     
     def __init__(self, width, height, depth, palette):
         Client.__init__(self, width, height, depth, palette)
-        self.count = 0
-        self.dirty.set()
         
-        print pygame.font.get_fonts()
+        self.count = 0
+        self.font = pygame.font.SysFont("chicagoflf", 12)
+        print str(self.font.get_linesize())
+        
+        self.bg = (0, 0, 0); self.fg = (255, 255, 255);
+        
+        self.dirty.set()
                 
 
 class ProtoMenu(Client, threading.Thread):
     def draw_frame(self, buffer):
         # draw a frame!
         draw_first = self.scroll // self.item_height
-        draw_last = (self.scroll + self.view_height) // self.item_height
-    
-        back_buffer = buffer
+        draw_last = (self.scroll + self.view_height - 1) // self.item_height + 1
     
         for item_index in range(draw_first, draw_last):
             if item_index == self.selected:
@@ -247,21 +245,35 @@ class ProtoMenu(Client, threading.Thread):
         
             y = item_index * self.item_height - self.scroll
         
-            pygame.draw.rect(back_buffer, bg, (0, y, 128, self.item_height))
+            pygame.draw.rect(buffer, bg, (0, y, self.view_width, self.item_height))
             text = self.font.render(self.items[item_index], False, fg, bg)
-            back_buffer.blit(text, (4, y))
+            buffer.blit(text, (4, y))
+        
+        pygame.draw.line(buffer, fg, (self.view_width, 0), (self.view_width, self.view_height))
+        pygame.draw.rect(buffer, bg, (self.view_width+1, 0, 9, self.view_height))
+        sb_y = self.scroll * self.view_height / self.content_height
+        sb_h = self.view_height * self.view_height / self.content_height
+        pygame.draw.rect(buffer, fg, (self.view_width+1, sb_y, 9, sb_h))
     
     def __init__(self, width, height, depth, palette):
-        self.item_count = 9
+        Client.__init__(self, width, height, depth, palette)
+        
         self.items = ["The", "Quick", "Brown", "Fox", "Jumps", "Over", "The", "Lazy", "Dog"]
-        self.view_height = 64
-        self.item_height = 16
+        self.item_count = len(self.items)
+        
+        self.view_width, self.view_height = width, height
+        self.font = pygame.font.SysFont("ChicagoFLF", 8)
+        self.item_height = self.font.get_linesize()
+        self.content_height = self.item_height * self.item_count
+        self.show_scrollbar = self.content_height > self.view_height
+        
+        if self.show_scrollbar:
+            self.view_width -= 10
+        
+        # will change:
         self.scroll = 0
         self.selected = 0
         
-        self.font = pygame.font.SysFont("ChicagoFLF", 12)
-        
-        Client.__init__(self, width, height, depth, palette)
         self.dirty.set()
         
     

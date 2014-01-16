@@ -22,8 +22,8 @@ driver.add_client(compositor)
 
 menu = ProtoMenu(width = 128, height = 64, depth = 8, palette = palette)
 compositor.add_client(menu)
-clock = Clock(width = 128, height = 64, depth = 8, palette = palette)
-compositor.add_client(clock)
+# clock = Clock(width = 128, height = 64, depth = 8, palette = palette)
+# compositor.add_client(clock)
 
 compositor.notify_client_dirty()
 
@@ -31,12 +31,12 @@ while True:
     for i in range(1, 9):
         time.sleep(0.5)
         menu.event("down")
-        clock.dirty.set()
+        # clock.dirty.set()
 
     for i in range(1, 9):
         time.sleep(0.5)
         menu.event("up")
-        clock.dirty.set()
+        # clock.dirty.set()
 
 time.sleep(5)
 
