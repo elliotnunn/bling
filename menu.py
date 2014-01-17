@@ -5,43 +5,57 @@ from bling import *
 import os
 import time
 
+class MainMenu(ProtoMenu):
+    def __init__(self, graf_props):
+        def myfunc(server):
+            print "spawning spawn"
+            server.add_client(MainMenu(graf_props))
+            
+        items = [
+            ("First option", myfunc),
+            ("Second option", None),
+            ("Third option", None),
+            ("Fourth option", None),
+            ("Fifth option", None)
+        ]
+        
+        ProtoMenu.__init__(self, items, graf_props)
+
+
 
 print "Initialising PyGame... video output should be pink"
 os.putenv('SDL_VIDEODRIVER', 'fbcon') # What the fuck?
 pygame.display.init()
-screen = pygame.display.set_mode((pygame.display.Info().current_w, pygame.display.Info().current_h), pygame.FULLSCREEN)
+disp_info = pygame.display.Info()
+screen = pygame.display.set_mode((disp_info.current_w, disp_info.current_h), pygame.FULLSCREEN)
 screen.fill((127, 0, 127))        
 pygame.display.update()
 pygame.font.init()
 
 print "Initialising Bling!"
 palette = tuple([(i, i, i) for i in range(0, 255)])
+
+graf_props = (128, 64, 8, palette)
+
 driver = ST7575Server()
-compositor = Compositor(width = 128, height = 64, depth = 8, palette = palette)
+input_server = StdinServer()
+compositor = Compositor(graf_props)
+input_server.add_client(compositor)
 driver.add_client(compositor)
 
-menu = ProtoMenu(width = 128, height = 64, depth = 8, palette = palette)
-compositor.add_client(menu)
-# clock = Clock(width = 128, height = 64, depth = 8, palette = palette)
-# compositor.add_client(clock)
+compositor.add_client(MainMenu(graf_props))
 
-compositor.notify_client_dirty()
+# while True:
+#     for i in range(1, 9):
+#         time.sleep(0.5)
+#         menu.event("down")
+#         #clock.dirty.set()
+# 
+#     for i in range(1, 9):
+#         time.sleep(0.5)
+#         menu.event("up")
+#         #clock.dirty.set()
 
-while True:
-    for i in range(1, 9):
-        time.sleep(0.5)
-        menu.event("down")
-        # clock.dirty.set()
-
-    for i in range(1, 9):
-        time.sleep(0.5)
-        menu.event("up")
-        # clock.dirty.set()
-
-time.sleep(5)
-
-print 'Deinitialising driver'
-driver.deinit()
 
 # cutting out the compositor decreases frame-time by 1.6ms, from 15.1ms to 13.5ms
 # text drawing seems to be really slow, but blitting is fast!
