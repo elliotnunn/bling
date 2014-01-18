@@ -216,7 +216,7 @@ class Compositor(Client, Server):
             client_front_buffer = client.get_buffer(True)
             my_back_buffer.blit(client_front_buffer, (offset, offset))
             client.buffer_lock.release()
-            offset += 10
+            offset += 0
         
         self.client_list_lock.release()
         
@@ -310,8 +310,10 @@ class ProtoMenu(Client):
             y = item_index * self.item_height - self.scroll
         
             pygame.draw.rect(buffer, bg, (0, y, self.view_width, self.item_height))
-            text = self.font.render(self.items[item_index][0], False, fg, bg)
-            buffer.blit(text, (4, y))
+            
+            if item_index < self.item_count:
+                text = self.font.render(self.items[item_index][0], False, fg, bg)
+                buffer.blit(text, (4, y))
         
         bg = (255, 255, 255); fg = (0, 0, 0);
         pygame.draw.line(buffer, fg, (self.view_width, 0), (self.view_width, self.view_height))
@@ -320,10 +322,10 @@ class ProtoMenu(Client):
         sb_h = self.view_height * self.view_height / self.content_height
         pygame.draw.rect(buffer, fg, (self.view_width+1, sb_y, 9, sb_h))
     
-    def __init__(self, items, graf_props):
+    def __init__(self, graf_props, items):
         Client.__init__(self, graf_props)
         
-        self.items = items # this is a list of tuples
+        self.items = items # list of tuples: ("Artists>>>", a function)
         self.item_count = len(self.items)
         
         self.view_width, self.view_height = self.width, self.height
@@ -341,7 +343,6 @@ class ProtoMenu(Client):
         
         self.dirty.set()
         
-    
     def event(self, event):
         do_redraw = False
         
@@ -376,44 +377,6 @@ class ProtoMenu(Client):
         if do_redraw: self.dirty.set()
 
 
-if False:
-    os.putenv('SDL_VIDEODRIVER', 'fbcon') # What the fuck?
-    pygame.display.init()
-    screen = pygame.display.set_mode((pygame.display.Info().current_w, pygame.display.Info().current_h), pygame.FULLSCREEN)
-    screen.fill((127, 0, 127))        
-    pygame.display.update()
-    pygame.font.init()
-
-    #x = PixelChucker()
-    palette = tuple([(i, i, i) for i in range(0, 255)])
-
-    print 'Initialising driver (ST7565Server)'
-    driver = ST7575Server()
-
-    # print 'Initialising input server (PygameInputServer)'
-    # input_server = PygameInputServer()
-
-    print 'Initialising Compositor'
-    compositor = Compositor(width = 128, height = 64, depth = 8, palette = palette)
-
-    # print 'Attaching compositor to input server'
-    # input_server.add_client(compositor)
-
-    print 'Attaching Compositor to driver'
-    driver.add_client(compositor)
-
-    print 'Initialising Clock'
-    clock = Clock(width = 128, height = 64, depth = 8, palette = palette)
-
-    print 'Attaching Clock to Compositor'
-    compositor.add_client(clock)
-
-    demo_wait_time = 15
-    print "Running for %ds" % demo_wait_time
-    time.sleep(demo_wait_time)
-
-    print 'Deinitialising driver'
-    driver.deinit()
 
 # cutting out the compositor decreases frame-time by 1.6ms, from 15.1ms to 13.5ms
 # text drawing seems to be really slow, but blitting is fast!
