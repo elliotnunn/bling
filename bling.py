@@ -227,14 +227,11 @@ class Compositor(Client, Server):
         client.parent_server = self
         self.dirty.set()
     
-    def remove_client(self, client):
-        print "removing the client..."
+    def remove_client(self, client): # this is spaghetti
         self.client_list_lock.acquire()
-        print "acquired the lock!"
         if client in self.clients: self.clients.remove(client)
         self.client_list_lock.release()
         #client.parent_server = None
-        print "sent the offscreen event"
         client.event("offscreen")
         self.dirty.set()
     
@@ -347,7 +344,6 @@ class ProtoMenu(Client):
         do_redraw = False
         
         if event == "back":
-            print "got a back event"
             self.parent_server.remove_client(self)
             # will eventually result in an "offscreen" event
         
@@ -366,7 +362,6 @@ class ProtoMenu(Client):
                 if self.scroll < min_scroll: self.scroll = min_scroll
         
         if event == "quit" or event == "offscreen":
-            print "got an offscreen event"
             self.quit_flag = True
             do_redraw = True
         

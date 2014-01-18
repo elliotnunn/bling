@@ -89,7 +89,7 @@ class AlbumSongsMenu(ProtoMenu):
         
         def create_menuspawner_for_song(file): # aka artist_albums_menuspawner_factory
             def menuspawner(server): # aka artist_albums_menu_factory
-                server.add_client(PlaceholderMenu(graf_props=graf_props))
+                server.add_client(SongSelectedMenu(graf_props=graf_props, file=file))
             return menuspawner
         
         for song in songs:
@@ -99,6 +99,21 @@ class AlbumSongsMenu(ProtoMenu):
         
         ProtoMenu.__init__(self, graf_props = graf_props, items = items)
         
+class SongSelectedMenu(ProtoMenu):
+    def __init__(self, file, graf_props):
+        items = []
+        
+        def just_play_the_song(server):
+            mpd_client.clear()
+            mpd_client.add(file)
+            mpd_client.play(0)
+            server.remove_client(self)
+        
+        items.append(("Play it!", just_play_the_song))
+        
+        ProtoMenu.__init__(self, graf_props = graf_props, items = items)
+
+
 
 
 print "Initialising PyGame... video output should be pink"
