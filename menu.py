@@ -7,25 +7,185 @@ import os
 import time
 import mpd
 
+
+
+class TimeChooser(Client):
+    def __init__(self, graf_props, notifier=None, title=None):
+        self.notifier = notifier
+        
+        self.title = title
+        if self.title == None: self.title = "Choose time:"
+        
+        self.hours = 7
+        self.minutes = 0
+        self.mode = 0
+        
+        self.small_font = pygame.freetype.Font("chicago.bdf")
+        self.small_font.origin = True
+        self.small_font.antialiased = False
+        
+        self.large_font = pygame.freetype.SysFont("chicagoflf", 36)
+        self.large_font.origin = True
+        self.large_font.antialiased = False
+        
+        lg_rect = self.large_font.get_rect("12")
+        self.min_x_pos = 80 # graf_props[0] // 2
+        self.min_hour_gap = 20
+        self.y_gap = (graf_props[1] - lg_rect[1]) // 2 + 7
+        self.lg_origin = self.y_gap + lg_rect[1]
+        
+        ampm_rect = self.small_font.get_rect("am")
+        self.ampm_x = self.min_x_pos - self.min_hour_gap - lg_rect[2] - 0 - ampm_rect[2]
+        self.pm_origin = self.y_gap + 7
+        self.am_origin = self.pm_origin + 10
+        
+        Client.__init__(self, graf_props)
+    
+    def event(self, event):
+        if event == "up" or event == "down":
+            if event == "up":
+                amt = 1
+            else:
+                amt = -1
+            
+            if self.mode == 1:
+                if event == "up" and self.minutes < 55:
+                    self.minutes += 5
+                if event == "down" and self.minutes > 0:
+                    self.minutes -= 5
+            
+            if self.mode == 0:
+                if event == "up" and self.hours < 23:
+                    self.hours += 1
+                if event == "down" and self.hours > 0:
+                    self.hours -= 1
+            
+            self.dirty.set()
+        
+        elif event == "ok":
+            if self.mode == 0:
+                self.mode = 1
+                self.dirty.set()
+            elif self.mode == 1:
+                if self.notifier != None:
+                    self.notifier(self.hours, self.minutes)
+                Client.event(self, "back")
+        
+        elif event == "back":
+            if self.mode == 1:
+                self.mode = 0
+                self.dirty.set()
+            elif self.mode == 0:
+                Client.event(self, "back")
+        
+        else:
+            Client.event(self, event)
+    
+    def draw_arrow(self, surface, x, y, s=1):
+        sz = 3
+        pygame.draw.line(surface, (0,0,0), (x-sz, y), (x, y+sz*s), 2)
+        pygame.draw.line(surface, (0,0,0), (x+sz, y), (x, y+sz*s), 2)
+    
+    def draw_frame(self, buffer, is_initial):
+        bc = (255, 255, 255)
+        tc = (0, 0, 0)
+        
+        if is_initial:
+            buffer.fill(bc)
+            
+            title = self.title.upper()
+            title_width = self.small_font.get_rect(title)[2]
+            title_pos = ((self.width - title_width) // 2, 9)
+            self.small_font.render_to(buffer, title_pos, title, fgcolor=tc, bgcolor=bc)
+            
+            pygame.draw.line(buffer, tc, (0, 10), (self.width, 10))
+        
+        else:
+            buffer.fill(bc, rect=(0, 11, self.width, self.height - 11))
+        
+        show_ampm = True
+        
+        if self.hours == 0:
+            draw_hours = "12"
+        elif self.hours <= 12:
+            draw_hours = str(self.hours)
+        elif self.hours <= 23:
+            draw_hours = str(self.hours - 12)
+        
+        draw_minutes = str(self.minutes).zfill(2)
+        
+        if show_ampm and self.hours >= 13:
+            self.small_font.render_to(buffer, (self.ampm_x, self.pm_origin), "pm", fgcolor=tc, bgcolor=bc)
+        elif show_ampm and self.hours <= 12:
+            self.small_font.render_to(buffer, (self.ampm_x, self.am_origin), "am", fgcolor=tc, bgcolor=bc)
+        
+        hour_rect = self.large_font.get_rect(draw_hours)
+        hour_pos = (self.min_x_pos - self.min_hour_gap - hour_rect[2], self.lg_origin)
+        self.large_font.render_to(buffer, hour_pos, draw_hours, fgcolor=tc, bgcolor=bc)
+        # buffer.blit(source=no, dest=(64 - no.get_width(), 20))
+        
+        min_pos = (self.min_x_pos, self.lg_origin)
+        self.large_font.render_to(buffer, min_pos, draw_minutes, fgcolor=tc, bgcolor=bc)
+        # buffer.blit(source=no, dest=(64, 20))
+        
+        if self.mode == 0:
+            if self.hours < 23:
+                self.draw_arrow(buffer, 50, 22, -1)
+            if self.hours > 0:
+                self.draw_arrow(buffer, 50, 54, 1)
+        elif self.mode == 1:
+            if self.minutes < 55:
+                self.draw_arrow(buffer, 103, 22, -1)
+            if self.minutes > 0:
+                self.draw_arrow(buffer, 103, 54, 1)
+
+
+class AlarmsMenu(ProtoMenu):
+    def __init__(self, graf_props):
+        spc = "- "
+        days = [
+            ("weekdays",  "Weekdays>", "Weekday alarm:"),
+            ("monday",    spc+"Mon>",  "Monday alarm:"),
+            ("tuesday",   spc+"Tue>",  "Tuesday alarm:"),
+            ("wednesday", spc+"Wed>",  "Wednesday alarm:"),
+            ("thursday",  spc+"Thu>",  "Thursday alarm:"),
+            ("friday",    spc+"Fri>",  "Friday alarm:"),
+            ("weekends",  "Weekends>", "Weekend alarm:"),
+            ("saturday",  spc+"Sat>",  "Saturday alarm:"),
+            ("sunday",    spc+"Sun>",  "Sunday alarm:"),
+        ]
+        
+        def create_timechooser_spawner_for_day(day, title):
+            def self_notifier(m, h):
+                self.event(("chose time", day, m, h))
+            sn = self_notifier
+            def timechooser_spawner(server):
+                timechooser = TimeChooser(graf_props=graf_props, notifier=sn, title=title)
+                server.add_client(timechooser)
+            return timechooser_spawner
+        
+        items = []
+        for day_tuple in days:
+            (day, menu_string, timechooser_title) = day_tuple
+            timechooser_spawner = create_timechooser_spawner_for_day(day, timechooser_title)
+            items.append((menu_string, timechooser_spawner))
+        
+        ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = "Alarms")
+    
+
 class MainMenu(ProtoMenu):
     def __init__(self, graf_props):
         
         items = []
         
-        def spawn_playlists_menu(server): server.add_client(PlaceholderMenu(graf_props))
-        items.append(("Playlists>", spawn_playlists_menu))
+        def spawn_playlists_menu(server): server.add_client(PrettyPicture("pics/glare.bmp", graf_props))
+        items.append(("Picture>", spawn_playlists_menu))
         
         def spawn_artists_menu(server): server.add_client(ArtistsMenu(graf_props))
         items.append(("Artists>", spawn_artists_menu))
         
-        def spawn_streams_menu(server): server.add_client(PlaceholderMenu(graf_props))
-        items.append(("Streams>", spawn_streams_menu))
-        
-        def spawn_alarms_menu(server): server.add_client(PlaceholderMenu(graf_props))
+        def spawn_alarms_menu(server): server.add_client(AlarmsMenu(graf_props))
         items.append(("Alarms>", spawn_alarms_menu))
-        
-        def spawn_settings_menu(server): server.add_client(PlaceholderMenu(graf_props))
-        items.append(("Settings>", spawn_settings_menu))
         
         ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = "Tick")
     
@@ -84,11 +244,19 @@ class ArtistAlbumsMenu(ProtoMenu):
             menuspawner = create_menuspawner_for_album(artist, album)
             items.append((album + ">", menuspawner))
         
-        ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = artist)
+        if artist == None:
+            title = "All albums"
+        else:
+            title = artist
+        
+        ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = title)
 
 class AlbumSongsMenu(ProtoMenu):
     def __init__(self, artist, album, graf_props):
-        songs = mpd_client.find("ARTIST", artist, "ALBUM", album)
+        if artist != None:
+            songs = mpd_client.find("ARTIST", artist, "ALBUM", album)
+        else:
+            songs = mpd_client.find("ALBUM", album)
         items = []
         
         def create_action_for_song(file): # aka artist_albums_menuspawner_factory
@@ -145,7 +313,27 @@ class SongSelectedMenu(ProtoMenu):
         
         ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = "Play song…")
 
-
+class PrettyPicture(Client):
+    def __init__(self, file, graf_props):
+        self.image = pygame.image.load(file)
+        
+        Client.__init__(self, graf_props=graf_props)
+        
+        self.dirty.set()
+    
+    def draw_frame(self, buffer, is_initial):
+        # buffer.fill((255, 255, 255))
+        # buffer.blit(pygame.transform.scale(self.image, (80, 64)), (24, 0))
+        buffer.blit(self.image, (0, 0))
+    
+    def event(self, event):
+        if event == "back":
+            self.parent_server.remove_client(self)
+            # will eventually result in an "offscreen" event
+        
+        if event == "quit" or event == "offscreen":
+            self.quit_flag = True
+            self.dirty.set()
 
 
 print("Initialising PyGame... video output should be pink")

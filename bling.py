@@ -17,7 +17,7 @@ class Client(threading.Thread):
         while self.quit_flag == False:
             # Don't need to acquire self.buffer_lock because this
             # is the only place we ever modify self.which_buffer
-            self.draw_frame(self.get_buffer(False))
+            self.draw_frame(buffer=self.get_buffer(False), is_initial=False)
             
             # But to modify which_buffer, we need the lock
             self.buffer_lock.acquire()
@@ -46,6 +46,10 @@ class Client(threading.Thread):
         self.which_buffer = True # True means buffer_a is front
         self.buffer_lock = threading.Lock()
         
+        # draw an initial frame to both buffers
+        self.draw_frame(buffer=self.buffer_a, is_initial=True)
+        self.buffer_b.blit(self.buffer_a, (0, 0))
+        
         # start life as an orphan
         self.parent_server = None
         
@@ -61,20 +65,28 @@ class Client(threading.Thread):
         else:
             return self.buffer_b
     
-    def draw_frame(self, buffer):
+    def draw_frame(self, buffer, is_first=False):
         "Nothing"
     
     def event(self, event):
-        "Nothing"
-    
+        if event == "quit" or event == "offscreen":
+            self.quit_flag = True
+            self.dirty.set()
+        
+        if event == "back":
+            self.parent_server.remove_client(self) # will eventually result in an "offscreen" event
+
 
 class Server:
     def notify_client_dirty(self):
-        "Nothing"
+        "Nothing" # Clients will do self.dirty.set()
     def add_client(self, client):
+        "Nothing"
+    def remove_client(self, client):
         "Nothing"
     def __init__(self):
         "Nothing"
+
 
 class InputServer:
     def add_client(self, client):
@@ -198,7 +210,7 @@ class PixelChucker(Server):
 class Compositor(Client, Server):
     def pre_frame(self): "Nothing"
     
-    def draw_frame(self, buffer):
+    def draw_frame(self, buffer, is_initial):
         self.client_list_lock.acquire()
         
         self.pre_frame() # this will update the x and y coordinates in self.clients
@@ -253,12 +265,12 @@ class Compositor(Client, Server):
         self.dirty.set()
     
     def __init__(self, graf_props):
-        Client.__init__(self, graf_props)
-        Server.__init__(self)
-        
         self.clients = []
         self.client_list_lock = threading.RLock()
-    
+        
+        Client.__init__(self, graf_props)
+        Server.__init__(self)
+            
     def event(self, event): # this is pretty ugly
         if event == "quit":
             self.quit_flag = True
@@ -331,7 +343,7 @@ class FabCompositor(Compositor):
         
 
 class Clock(Client):
-    def draw_frame(self, buffer):
+    def draw_frame(self, buffer, is_initial):
         buffer.fill(self.bg)
         
         newsurf = self.font.render("FrmCt=" + str(self.count), False, self.fg, self.bg)
@@ -355,15 +367,16 @@ class Clock(Client):
             self.dirty.set()
                 
 
-class ProtoMenu(Client):
-    def draw_frame(self, buffer):
+class ProtoMenu(Client): # a bit of a mess, and poorly optimised
+    def draw_frame(self, buffer, is_initial):
         blk = (0, 0, 0)
         wht = (255, 255, 255)
+        # blk, wht = wht, blk # cheeky
         
         # draw the title
         pygame.draw.rect(buffer, wht, (0, 0, self.width, self.titlearea_height))
         title_width = self.font.get_rect(self.title)[2]
-        self.font.render_to(buffer, ((self.width - title_width) // 2, 0), self.title, fgcolor=blk, bgcolor=wht)
+        self.font.render_to(buffer, ((self.width - title_width) // 2, 9), self.title, fgcolor=blk, bgcolor=wht)
         
         # draw a separating line after 10 pixels
         pygame.draw.line(buffer, blk, (0, self.titlearea_height - 2), (self.width, self.titlearea_height - 2))
@@ -383,9 +396,21 @@ class ProtoMenu(Client):
         
             pygame.draw.rect(buffer, bc, (0, y, self.view_width, self.item_height))
             
-            if item_index < self.item_count:
-                text = self.font.render(self.items[item_index][0], fgcolor=tc, bgcolor=bc)
-                buffer.blit(text[0], (4, y+1))
+            if item_index >= self.item_count: continue
+            
+            text = self.items[item_index][0]
+            if text.endswith(">"): # This shouldn't be in-band but whatevs
+                text = text.rstrip(">")
+                draw_arrow = True
+            else:
+                draw_arrow = False
+            
+            self.font.render_to(buffer, (1, y+10), text, fgcolor=tc, bgcolor=bc)
+            
+            if draw_arrow:
+                x = self.view_width - 8
+                pygame.draw.line(buffer, tc, (x, y+4), (x+2, y+6), 2)
+                pygame.draw.line(buffer, tc, (x, y+8), (x+2, y+6), 2)
         
         if self.scrollbar_visible:
             pygame.draw.rect(buffer, wht,(self.view_width, self.titlearea_height, self.scrollbararea_width, self.view_height))
@@ -393,8 +418,6 @@ class ProtoMenu(Client):
             pygame.draw.rect(buffer, blk, (self.view_width + 3, self.scrollbar_pos + self.titlearea_height, self.scrollbararea_width - 3, self.scrollbar_height))
     
     def __init__(self, graf_props, items, title="untitled"):
-        Client.__init__(self, graf_props)
-        
         # will NOT change
         self.title = title.upper()
         
@@ -402,10 +425,12 @@ class ProtoMenu(Client):
         self.item_count = len(self.items)
         
         self.titlearea_height = 12
-        self.view_width, self.view_height = self.width, self.height - self.titlearea_height
+        self.view_width, self.view_height = graf_props[0], graf_props[1] - self.titlearea_height
         
         self.font = pygame.freetype.Font("chicago.bdf")
-        self.item_height = self.font.get_sized_glyph_height()
+        self.font.origin = True
+        self.font.antialiased = False
+        self.item_height = 13 # self.font.get_sized_glyph_height()
         
         self.content_height = self.item_height * self.item_count
         if self.content_height <= self.view_height:
@@ -413,17 +438,17 @@ class ProtoMenu(Client):
             self.scrollbararea_width = 0
         else:
             self.scrollbar_visible = True
-            self.scrollbararea_width = 12
+            self.scrollbararea_width = 8
             self.scrollbar_height = max(10, self.view_height * self.view_height / self.content_height)
         
-        self.view_width = self.width - self.scrollbararea_width
+        self.view_width = self.view_width - self.scrollbararea_width
                 
         # will change:
         self.scroll = 0
         self.selected = 0
         self.scrollbar_pos = 0
         
-        self.dirty.set()
+        Client.__init__(self, graf_props)
         
     def event(self, event):
         do_redraw = False
