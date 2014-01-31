@@ -8,25 +8,34 @@ import time
 import mpd
 
 
+class AlarmBackend:
+    def __init__(self):
+        "Load everything from the crontab and elsewhere"
+    
+    def set_alarm(self, days=[1, 2, 3, 4, 5], type="analog", hrs=0, mins=0):
+        # type = "off", "analog" or "digital"
+        if type == "digital":
+            print("Alarm: digital for days %s: %02d:%02d" % (str(days), hrs, mins))
+        else:
+            print("Alarm: %s for days %s" % (type, str(days)))
+    
+    def get_alarm(self, day):
+        # returns a one- or three-item tuple: (type, [ mins, hrs ])
+        "blah"
 
 class TimeChooser(Client):
-    def __init__(self, graf_props, notifier=None, title=None):
+    def __init__(self, graf_props, notifier=None, title="Choose time:"):
         self.notifier = notifier
-        
         self.title = title
-        if self.title == None: self.title = "Choose time:"
         
         self.hours = 7
         self.minutes = 0
         self.mode = 0
         
         self.small_font = pygame.freetype.Font("chicago.bdf")
-        self.small_font.origin = True
-        self.small_font.antialiased = False
-        
         self.large_font = pygame.freetype.SysFont("chicagoflf", 36)
-        self.large_font.origin = True
-        self.large_font.antialiased = False
+        self.small_font.origin = self.large_font.origin = True
+        self.small_font.antialiased = self.large_font.antialiased = False
         
         lg_rect = self.large_font.get_rect("12")
         self.min_x_pos = 80 # graf_props[0] // 2
@@ -142,36 +151,77 @@ class TimeChooser(Client):
 
 class AlarmsMenu(ProtoMenu):
     def __init__(self, graf_props):
-        spc = "- "
-        days = [
+        spc = ""
+        day_tuples = [
+            ("every day", "Every day>","Daily alarm:"),
             ("weekdays",  "Weekdays>", "Weekday alarm:"),
+            ("weekends",  "Weekends>", "Weekend alarm:"),
             ("monday",    spc+"Mon>",  "Monday alarm:"),
             ("tuesday",   spc+"Tue>",  "Tuesday alarm:"),
             ("wednesday", spc+"Wed>",  "Wednesday alarm:"),
             ("thursday",  spc+"Thu>",  "Thursday alarm:"),
             ("friday",    spc+"Fri>",  "Friday alarm:"),
-            ("weekends",  "Weekends>", "Weekend alarm:"),
             ("saturday",  spc+"Sat>",  "Saturday alarm:"),
             ("sunday",    spc+"Sun>",  "Sunday alarm:"),
         ]
         
-        def create_timechooser_spawner_for_day(day, title):
-            def self_notifier(m, h):
-                self.event(("chose time", day, m, h))
-            sn = self_notifier
-            def timechooser_spawner(server):
-                timechooser = TimeChooser(graf_props=graf_props, notifier=sn, title=title)
-                server.add_client(timechooser)
-            return timechooser_spawner
+        def create_alarmtypemenu_spawner_for_day(day):
+            def alarmtypemenu_spawner(server):
+                server.add_client(AlarmTypeMenu(graf_props = graf_props, day = day))
+            return alarmtypemenu_spawner
         
         items = []
-        for day_tuple in days:
-            (day, menu_string, timechooser_title) = day_tuple
-            timechooser_spawner = create_timechooser_spawner_for_day(day, timechooser_title)
-            items.append((menu_string, timechooser_spawner))
+        for day_tuple in day_tuples:
+            (day, menu_string, junk) = day_tuple
+            alarmtypemenu_spawner = create_alarmtypemenu_spawner_for_day(day)
+            items.append((menu_string, alarmtypemenu_spawner))
         
         ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = "Alarms")
+
+
+class AlarmTypeMenu(ProtoMenu):
+    def __init__(self, graf_props, day):
+        day_to_title_and_day_numbers = {
+            "every day": ("Daily alarm:",      range(0, 7)),
+            "weekdays":  ("Weekday alarm:",    range(0, 5)),
+            "weekends":  ("Weekend alarm:",    range(5, 7)),
+            "monday":    ("Monday alarm:",     0),
+            "tuesday":   ("Tuesday alarm:",    1),
+            "wednesday": ("Wednesday alarm:",  2),
+            "thursday":  ("Thursday alarm:",   3),
+            "friday":    ("Friday alarm:",     4),
+            "saturday":  ("Saturday alarm:",   5),
+            "sunday":    ("Sunday alarm:",     6),
+        }
+        title, day_numbers = day_to_title_and_day_numbers[day]
+        
+        items = []
+        
+        def timechooser_action(hrs, mins):
+            global_alarm_backend.set_alarm(days = day_numbers, type = "digital", hrs = hrs, mins = mins)
+        def timechooser_spawner(server):
+            timechooser = TimeChooser(graf_props=graf_props, notifier=timechooser_action, title=title)
+            server.add_client(timechooser)
+        items.append(("Set digital alarm>", timechooser_spawner))
+        
+        def use_analog_alarm(server):
+            global_alarm_backend.set_alarm(days = day_numbers, type = "analog")
+            server.remove_client(self)
+        items.append(("Use analog alarm", use_analog_alarm))
+        
+        def disable_alarm(server):
+            global_alarm_backend.set_alarm(days = day_numbers, type = "off")
+            server.remove_client(self)
+        items.append(("Disable alarm", disable_alarm))
+        
+        ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = title)
     
+    def event(self, event):
+        if event == "covered":
+            self.parent_server.remove_client(self, anim_duration=0)
+        else:
+            ProtoMenu.event(self, event)
+
 
 class MainMenu(ProtoMenu):
     def __init__(self, graf_props):
@@ -187,7 +237,7 @@ class MainMenu(ProtoMenu):
         def spawn_alarms_menu(server): server.add_client(AlarmsMenu(graf_props))
         items.append(("Alarms>", spawn_alarms_menu))
         
-        ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = "Tick")
+        ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = "Main menu")
     
     def event(self, event):
         if event != "back": ProtoMenu.event(self, event)
@@ -203,7 +253,6 @@ class PlaceholderMenu(ProtoMenu):
         
         ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = "Dang it!")
 
-#closures in Python are an absolute fucking joke!
 
 class ArtistsMenu(ProtoMenu):
     def __init__(self, graf_props):
@@ -335,6 +384,9 @@ class PrettyPicture(Client):
             self.quit_flag = True
             self.dirty.set()
 
+
+global global_alarm_backend
+global_alarm_backend = AlarmBackend()
 
 print("Initialising PyGame... video output should be pink")
 os.putenv('SDL_VIDEODRIVER', 'fbcon') # What the fuck?

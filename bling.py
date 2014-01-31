@@ -247,6 +247,8 @@ class Compositor(Client, Server):
         self.client_list_lock.release()
         
         client.parent_server = self
+        client.event("fully-onscreen")
+        if len(clients) >= 2: clients[-2].event("covered")
         self.dirty.set()
     
     def remove_client(self, client):
@@ -258,8 +260,8 @@ class Compositor(Client, Server):
         self.client_list_lock.release()
         
         client.parent_server = None
-        self.dirty.set()
         client.event("offscreen")
+        self.dirty.set()
     
     def notify_client_dirty(self):
         self.dirty.set()
@@ -293,7 +295,9 @@ class Compositor(Client, Server):
 
 class FabCompositor(Compositor):
     def pre_frame(self):
-        for i in range(0, len(self.clients)):
+        # we reverse iterate, lest we delete the 2nd client of 3 then try to access the 3rd
+        for i in reversed(range(0, len(self.clients))):
+            if i > len(self.clients)-1: print("oh crap!")
             # The tuples in self.clients are of the form (client, x_pos, y_pos) by default.
             # This subclass extends them to (client, x_pos, y_pos, animation),
             # where animation = (start_time_in_s, duration_in_s, direction), and
@@ -302,40 +306,43 @@ class FabCompositor(Compositor):
             
             if animation != None:
                 (start_time, duration, direction) = animation #unpack the tuple in the tuple in self.clients
-                progress = (time.clock() - start_time) / duration * self.width
+                time_elapsed = time.clock() - start_time
                 
-                if progress >= self.width: #put a stop to this animation
+                if time_elapsed >= duration: #put a stop to this animation
                     animation = None
                     if direction == -1: # this was a fuck-off animation
-                        self.clients.pop(i) # DANGEROUS
+                        self.clients.pop(i) # DANGEROUS, and bit me on the ass!
                         client.parent_server = None
                         client.event("offscreen")
                     else: # the client remains visible once the animation ends
                         self.clients[i] = (client, 0, 0, None)
+                        if len(self.clients) >= 2: self.clients[-2][0].event("covered")
+                        client.event("fully-onscreen")
                         
-                else: 
+                else:
+                    progress = time_elapsed / duration * self.width
                     if direction == -1: # ie sliding out to the right
                         x = progress
                     elif direction == 1: # sliding in from the right
                         x = self.width - progress
                         
                     self.clients[i] = (client, x, 0, animation)
-            
-                self.dirty.set() # go like mad
+                    
+                    self.dirty.set() # go like mad
     
-    def add_client(self, client):
+    def add_client(self, client, anim_duration=0.2):
         self.client_list_lock.acquire()
-        self.clients.append((client, 0, 0, (time.clock(), 0.2, 1)))
+        self.clients.append((client, 0, 0, (time.clock(), anim_duration, 1)))
         self.client_list_lock.release()
         
         client.parent_server = self
         self.dirty.set()
     
-    def remove_client(self, client):
+    def remove_client(self, client, anim_duration=0.2):
         self.client_list_lock.acquire()
         for i in reversed(range(0, len(self.clients))):
             if self.clients[i][0] == client:
-                self.clients[i] = (self.clients[i][0], 0, 0, (time.clock(), 0.2, -1))
+                self.clients[i] = (self.clients[i][0], 0, 0, (time.clock(), anim_duration, -1))
                 break
         self.client_list_lock.release()
         
