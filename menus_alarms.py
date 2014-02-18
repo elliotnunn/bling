@@ -26,7 +26,7 @@ class TimeChooser(Client):
         self.mode = 0
         
         self.small_font = pygame.freetype.Font("chicago.bdf")
-        self.large_font = pygame.freetype.SysFont("chicagoflf", 36)
+        self.large_font = pygame.freetype.Font("chicago.ttf", 36)
         self.small_font.origin = self.large_font.origin = True
         self.small_font.antialiased = self.large_font.antialiased = False
         

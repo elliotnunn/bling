@@ -419,7 +419,7 @@ if envt == "rpi":
     # screen.fill((127, 0, 127))        
     # pygame.display.update()
     
-    bling_hw_pygame.DesktopServer(graf_props) # to init pygame
+    ds = bling_hw_pygame.DesktopServer(graf_props) # to init pygame
     
     hw_server = bling_hw_st7565.ST7575Server()
     input_server = bling_hw_terminal.StdinServer()
