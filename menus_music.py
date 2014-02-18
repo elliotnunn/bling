@@ -6,6 +6,7 @@ global mpd_client
 class ArtistsMenu(ProtoMenu):
     def __init__(self, graf_props):
         artists = [None] + mpd_client.list("ARTIST")
+        print(str(len(artists)))
         items = []
         
         # This reminds me of the infamous RequestProcessorFactoryFactory.

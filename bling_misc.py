@@ -40,11 +40,11 @@ class PlaceholderMenu(ProtoMenu):
 
 class PrettyPicture(Client):
     def __init__(self, file, graf_props):
-        self.image = pygame.image.load(file)
-        
-        Client.__init__(self, graf_props=graf_props)
-        
-        self.dirty.set()
+        try:
+            self.image = pygame.image.load(file)
+            Client.__init__(self, graf_props=graf_props)
+        except:
+            self.graceful_fail()
     
     def draw_frame(self, buffer, is_initial):
         # buffer.fill((255, 255, 255))
