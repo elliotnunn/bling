@@ -1,9 +1,9 @@
-from bling_core import *
+import bling_core
 import pygame.freetype
 import time
 import sys
 
-class Compositor(Client, Server):
+class Compositor(bling_core.Client, bling_core.Server):
     def pre_frame(self): pass
     
     def _draw_frame(self, buffer, is_initial):
@@ -155,7 +155,7 @@ class FabCompositor(Compositor):
         self.dirty.set()
 
 
-class TimeTest(Client):
+class TimeTest(bling_core.Client):
     def _setup(self, graf_props):
         self.font = pygame.freetype.Font("chicago.bdf")
     
@@ -167,7 +167,7 @@ class TimeTest(Client):
         return self.t + 500
         
 
-class SexyMenu(Client):
+class SexyMenu(bling_core.Client):
     class MenuItemWidget:
         def setup(self, text, font, width, height):
             self.gap, self.speed = 1, 20 # sec, px/sex
@@ -291,7 +291,7 @@ class SexyMenu(Client):
         
         return nxt
 
-class ProtoMenu(Client): # a bit of a mess, and poorly optimised
+class ProtoMenu(bling_core.Client): # a bit of a mess, and poorly optimised
     def _draw_frame(self, buffer, is_initial):
         blk = (0, 0, 0)
         wht = (255, 255, 255)

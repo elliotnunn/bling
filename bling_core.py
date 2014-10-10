@@ -58,7 +58,7 @@ class Client(threading.Thread):
         while self.quit_flag==False:
             # Choose how long to wait before drawing a frame
             if self.nxt == None: self.nxt = sys.maxsize
-            #if self.nxt == -1: self.nxt = self.t
+            if self.nxt == -1: self.nxt = self.t
             if self.nxt < self.t + 50: self.nxt = self.t
             
             if self.nxt == sys.maxsize: # until woken
@@ -69,7 +69,7 @@ class Client(threading.Thread):
             else:                                           # arbitrary
                 if self.__class__.__name__=="FabCompositor":
                     print("waiting from %d to %d" % (pygame.time.get_ticks(), self.nxt))
-                pygame.time.wait(self.nxt - pygame.time.get_ticks())
+                self.dirty.wait((self.nxt - pygame.time.get_ticks()) / 1000)
                 self.dirty.clear()
             
             # Draw the actual frame

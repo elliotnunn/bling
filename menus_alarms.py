@@ -1,5 +1,5 @@
-from bling_core import *
-from bling_uikit import *
+import bling_core
+import bling_uikit
 
 class AlarmBackend:
     def __init__(self):
@@ -16,7 +16,7 @@ class AlarmBackend:
         # returns a one- or three-item tuple: (type, [ mins, hrs ])
         "blah"
 
-class TimeChooser(Client):
+class TimeChooser(bling_core.Client):
     def _setup(self, graf_props, notifier=None, title="Choose time:"):
         self.notifier = notifier
         self.title = title
@@ -140,7 +140,7 @@ class TimeChooser(Client):
                 self.__draw_arrow(buffer, 103, 54, 1)
 
 
-class AlarmsMenu(ProtoMenu):
+class AlarmsMenu(bling_uikit.ProtoMenu):
     def _setup(self, graf_props):
         spc = ""
         day_tuples = [
@@ -170,7 +170,7 @@ class AlarmsMenu(ProtoMenu):
         ProtoMenu._setup(self, graf_props, items=items, title="Alarms")
 
 
-class AlarmTypeMenu(ProtoMenu):
+class AlarmTypeMenu(bling_uikit.ProtoMenu):
     def _setup(self, graf_props, day):
         day_to_title_and_day_numbers = {
             "every day": ("Daily alarm:",      range(0, 7)),

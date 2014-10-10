@@ -1,9 +1,8 @@
-from bling_core import *
-from bling_uikit import *
+import bling_uikit
 
 global mpd_client
 
-class ArtistsMenu(ProtoMenu):
+class ArtistsMenu(bling_uikit.ProtoMenu):
     def _setup(self, graf_props):
         artists = [None] + mpd_client.list("ARTIST")
         print(str(len(artists)))
@@ -23,7 +22,7 @@ class ArtistsMenu(ProtoMenu):
         
         ProtoMenu._setup(self, graf_props, items=items, title="Artists")
 
-class ArtistAlbumsMenu(ProtoMenu):
+class ArtistAlbumsMenu(bling_uikit.ProtoMenu):
     def _setup(self, graf_props, artist=None):
         if artist == None:
             albums = mpd_client.list("ALBUM")
@@ -50,7 +49,7 @@ class ArtistAlbumsMenu(ProtoMenu):
         
         ProtoMenu._setup(self, graf_props, items=items, title=title)
 
-class AlbumSongsMenu(ProtoMenu):
+class AlbumSongsMenu(bling_uikit.ProtoMenu):
     def _setup(self, graf_props, artist=None, album=None):
         if artist != None:
             songs = mpd_client.find("ARTIST", artist, "ALBUM", album)
@@ -81,7 +80,7 @@ class AlbumSongsMenu(ProtoMenu):
         
         ProtoMenu._setup(self, graf_props, items=items, title=album)
         
-class SongSelectedMenu(ProtoMenu):
+class SongSelectedMenu(bling_uikit.ProtoMenu):
     def _setup(self, graf_props, canqueue=False, file=None):
         items = []
                 
