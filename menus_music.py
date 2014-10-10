@@ -4,7 +4,7 @@ from bling_uikit import *
 global mpd_client
 
 class ArtistsMenu(ProtoMenu):
-    def __init__(self, graf_props):
+    def _setup(self, graf_props):
         artists = [None] + mpd_client.list("ARTIST")
         print(str(len(artists)))
         items = []
@@ -21,10 +21,10 @@ class ArtistsMenu(ProtoMenu):
             if artist == None: artist = "*See all albums"
             items.append((artist + ">", spawn_artist_albums_menu))
         
-        ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = "Artists")
+        ProtoMenu._setup(self, graf_props, items=items, title="Artists")
 
 class ArtistAlbumsMenu(ProtoMenu):
-    def __init__(self, artist, graf_props):
+    def _setup(self, graf_props, artist=None):
         if artist == None:
             albums = mpd_client.list("ALBUM")
         else:
@@ -48,10 +48,10 @@ class ArtistAlbumsMenu(ProtoMenu):
         else:
             title = artist
         
-        ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = title)
+        ProtoMenu._setup(self, graf_props, items=items, title=title)
 
 class AlbumSongsMenu(ProtoMenu):
-    def __init__(self, artist, album, graf_props):
+    def _setup(self, graf_props, artist=None, album=None):
         if artist != None:
             songs = mpd_client.find("ARTIST", artist, "ALBUM", album)
         else:
@@ -79,10 +79,10 @@ class AlbumSongsMenu(ProtoMenu):
             title = song["title"]
             items.append((title, menuspawner))
         
-        ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = album)
+        ProtoMenu._setup(self, graf_props, items=items, title=album)
         
 class SongSelectedMenu(ProtoMenu):
-    def __init__(self, file, canqueue, graf_props):
+    def _setup(self, graf_props, canqueue=False, file=None):
         items = []
                 
         # def play_next(server):
@@ -110,4 +110,4 @@ class SongSelectedMenu(ProtoMenu):
             server.remove_client(self)
         items.append(("Play now", play_now))
         
-        ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = "Play song…")
+        ProtoMenu._setup(self, graf_props, items=items, title="Play song…")

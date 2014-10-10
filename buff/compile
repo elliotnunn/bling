@@ -2,14 +2,14 @@
 
 cd ~/bling/buff
 
-sync
+#sync
 
 #gcc buff.c -std=c99 -lbcm2835
 
-gcc -Wall -fPIC -c example.c -o example.o
-gcc -shared -Wl,-soname,libexample -o libexample.so example.o
+#gcc -Wall -fPIC -c example.c -o example.o
+#gcc -shared -Wl,-soname,libexample -o libexample.so example.o
 
 gcc -fPIC -O2 -std=c99 -c buff.c -o buff.o
 gcc -shared -Wl,-soname,libbuff -o libbuff.so buff.o -lbcm2835
 
-sync
+#sync

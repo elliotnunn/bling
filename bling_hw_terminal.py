@@ -1,7 +1,7 @@
-from bling_core import *
+import bling_core
 import threading
 
-class StdinServer(InputServer, threading.Thread):
+class StdinServer(bling_core.InputServer, threading.Thread):
     def __init__(self):
         import tty, sys, termios
         threading.Thread.__init__(self)
@@ -13,7 +13,7 @@ class StdinServer(InputServer, threading.Thread):
         
         ch = ""
         while ch != "q":
-            tty.setraw(sys.stdin.fileno())
+            tty.setcbreak(sys.stdin.fileno())
             
             # this blocks, and thank goodness
             ch = sys.stdin.read(1)
@@ -31,6 +31,9 @@ class StdinServer(InputServer, threading.Thread):
                 self.client.event("back")
             elif ch == "q":
                 self.client.event("quit")
+            elif ch == "e":
+                self.client.event("screenshot")
+        
         
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     

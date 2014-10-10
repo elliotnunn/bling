@@ -17,7 +17,7 @@ class AlarmBackend:
         "blah"
 
 class TimeChooser(Client):
-    def __init__(self, graf_props, notifier=None, title="Choose time:"):
+    def _setup(self, graf_props, notifier=None, title="Choose time:"):
         self.notifier = notifier
         self.title = title
         
@@ -40,10 +40,8 @@ class TimeChooser(Client):
         self.ampm_x = self.min_x_pos - self.min_hour_gap - lg_rect[2] - 0 - ampm_rect[2]
         self.pm_origin = self.y_gap + 7
         self.am_origin = self.pm_origin + 10
-        
-        Client.__init__(self, graf_props)
     
-    def event(self, event):
+    def _event(self, event):
         if event == "up" or event == "down":
             if event == "up":
                 amt = 1
@@ -71,24 +69,24 @@ class TimeChooser(Client):
             elif self.mode == 1:
                 if self.notifier != None:
                     self.notifier(self.hours, self.minutes)
-                Client.event(self, "back")
+                Client._event(self, "back")
         
         elif event == "back":
             if self.mode == 1:
                 self.mode = 0
                 self.dirty.set()
             elif self.mode == 0:
-                Client.event(self, "back")
+                Client._event(self, "back")
         
         else:
-            Client.event(self, event)
+            Client._event(self, event)
     
-    def draw_arrow(self, surface, x, y, s=1):
+    def __draw_arrow(self, surface, x, y, s=1):
         sz = 3
         pygame.draw.line(surface, (0,0,0), (x-sz, y), (x, y+sz*s), 2)
         pygame.draw.line(surface, (0,0,0), (x+sz, y), (x, y+sz*s), 2)
     
-    def draw_frame(self, buffer, is_initial):
+    def _draw_frame(self, buffer, is_initial):
         bc = (255, 255, 255)
         tc = (0, 0, 0)
         
@@ -132,18 +130,18 @@ class TimeChooser(Client):
         
         if self.mode == 0:
             if self.hours < 23:
-                self.draw_arrow(buffer, 50, 22, -1)
+                self.__draw_arrow(buffer, 50, 22, -1)
             if self.hours > 0:
-                self.draw_arrow(buffer, 50, 54, 1)
+                self.__draw_arrow(buffer, 50, 54, 1)
         elif self.mode == 1:
             if self.minutes < 55:
-                self.draw_arrow(buffer, 103, 22, -1)
+                self.__draw_arrow(buffer, 103, 22, -1)
             if self.minutes > 0:
-                self.draw_arrow(buffer, 103, 54, 1)
+                self.__draw_arrow(buffer, 103, 54, 1)
 
 
 class AlarmsMenu(ProtoMenu):
-    def __init__(self, graf_props):
+    def _setup(self, graf_props):
         spc = ""
         day_tuples = [
             ("every day", "Every day>","Daily alarm:"),
@@ -169,11 +167,11 @@ class AlarmsMenu(ProtoMenu):
             alarmtypemenu_spawner = create_alarmtypemenu_spawner_for_day(day)
             items.append((menu_string, alarmtypemenu_spawner))
         
-        ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = "Alarms")
+        ProtoMenu._setup(self, graf_props, items=items, title="Alarms")
 
 
 class AlarmTypeMenu(ProtoMenu):
-    def __init__(self, graf_props, day):
+    def _setup(self, graf_props, day):
         day_to_title_and_day_numbers = {
             "every day": ("Daily alarm:",      range(0, 7)),
             "weekdays":  ("Weekday alarm:",    range(0, 5)),
@@ -207,10 +205,10 @@ class AlarmTypeMenu(ProtoMenu):
             server.remove_client(self)
         items.append(("Disable alarm", disable_alarm))
         
-        ProtoMenu.__init__(self, graf_props = graf_props, items = items, title = title)
+        ProtoMenu._setup(self, graf_props, items=items, title=title)
     
-    def event(self, event):
+    def _event(self, event):
         if event == "covered":
             self.parent_server.remove_client(self, anim_duration=0)
         else:
-            ProtoMenu.event(self, event)
+            ProtoMenu._event(self, event)

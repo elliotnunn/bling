@@ -1,14 +1,14 @@
 from bling_core import *
 import pygame.freetype
 import time
+import sys
 
 class Compositor(Client, Server):
-    def pre_frame(self): "Nothing"
+    def pre_frame(self): pass
     
-    def draw_frame(self, buffer, is_initial):
+    def _draw_frame(self, buffer, is_initial):
         self.client_list_lock.acquire()
-        
-        self.pre_frame() # this will update the x and y coordinates in self.clients
+        nxt = self.pre_frame() # this will update the x and y coordinates in self.clients
                 
         # one day this will be smarter:
         # - only drawing the topmost fullscreen window and above
@@ -36,6 +36,8 @@ class Compositor(Client, Server):
 
         self.client_list_lock.release()
         
+        return nxt
+        
     def add_client(self, client):
         self.client_list_lock.acquire()
         self.clients.append((client, 0, 0))
@@ -62,13 +64,16 @@ class Compositor(Client, Server):
         self.dirty.set()
     
     def __init__(self, graf_props):
-        self.clients = []
-        self.client_list_lock = threading.RLock()
-        
         Client.__init__(self, graf_props)
         Server.__init__(self)
-            
-    def event(self, event): # this is pretty ugly
+    
+    def _setup(self, graf_props):
+        print("running setup")
+        self.clients = []
+        self.client_list_lock = threading.RLock()
+
+    
+    def _event(self, event): # this is pretty ugly
         if event == "quit":
             self.quit_flag = True
             self.dirty.set()
@@ -77,6 +82,13 @@ class Compositor(Client, Server):
             for client_tuple in self.clients:
                 client_tuple[0].event("quit")
             self.client_list_lock.release()
+            
+        elif event == "screenshot":
+            filename = "screenshot/bling @ %s.png" % time.ctime()
+            self.buffer_lock.acquire()
+            pygame.image.save(self.get_buffer(True), filename)
+            self.buffer_lock.release()
+            
         else:
             self.client_list_lock.acquire()
             if len(self.clients) > 0:
@@ -122,7 +134,7 @@ class FabCompositor(Compositor):
                         
                     self.clients[i] = (client, x, 0, animation)
                     
-                    self.dirty.set() # go like mad
+                    return self.t
     
     def add_client(self, client, anim_duration=0.2):
         self.client_list_lock.acquire()
@@ -143,8 +155,144 @@ class FabCompositor(Compositor):
         self.dirty.set()
 
 
+class TimeTest(Client):
+    def _setup(self, graf_props):
+        self.font = pygame.freetype.Font("chicago.bdf")
+    
+    def _draw_frame(self, buffer=None, is_initial=False):
+        buffer.fill((255,255,255), (0,0,self.width,self.height))
+        
+        self.font.render_to(buffer, (0,0), "t = %dms"%pygame.time.get_ticks())
+        
+        return self.t + 500
+        
+
+class SexyMenu(Client):
+    class MenuItemWidget:
+        def setup(self, text, font, width, height):
+            self.gap, self.speed = 1, 20 # sec, px/sex
+            
+            self.text, self.width, self.height = text, width, height
+            self.selected = False
+            
+            self.buff, rect = font.render(text, fgcolor=(0,0,0), bgcolor=(255,255,255))
+            self.txt_y = 10 - rect[1] # the origin!
+            self.txt_x = 2 + rect[0]
+            
+            max_string_width = width # - self.draw_x - 2
+            self.overflow = (self.buff.get_width() > max_string_width)
+            if self.overflow:
+                # Figure out the goddamn cutoff width using numpy or something
+                self.overflow_cutoff = max_string_width - 11 # (ellipsis width + 1px)
+                self.cycle = self.gap + self.buff.get_width()/self.speed
+        
+        def set_selected(self, selected, at_time):
+            self.selected = selected
+            if selected: self.selected_when = at_time
+        
+        def draw(self, surf, pos, frame_time):
+            fg = (255,255,255) if self.selected else (0,0,0)
+            bg = (0,0,0) if self.selected else (255,255,255)
+            
+            # right here: choose whether to invert
+            
+            rect = pos + (self.width, self.height)
+            surf.fill(bg, rect)
+            buff_w, buff_h = self.buff.get_width(), self.buff.get_height()
+            widg_x, widg_y = pos
+            
+            txt_y = widg_y + self.txt_y
+            txt_x = widg_x + self.txt_x
+            
+            if self.overflow:
+                if self.selected:
+                    progress = (frame_time - self.selected_when) % self.cycle
+                    if progress > self.gap:
+                        src_x = (progress-self.gap)*self.speed
+                        nxt = frame_time
+                        print("anim")
+                    else:
+                        src_x = 0
+                        nxt = frame_time + self.gap - progress
+                        print("gap till %f" % nxt)
+                        
+                    src_w = buff_w - src_x
+                    dest_x = 0
+                    
+                    if src_w < self.width:
+                        draw_2 = True
+                        src2_x = 0
+                        src2_w = src_w - self.width
+                        dest2_x = src_w
+                    else:
+                        draw_2 = False
+                        src_w = self.width
+                    
+                    src_xywh = (src_x, 0, src_w, buff_h)
+                    dest_xy = (dest_x, txt_y)
+                    surf.blit(self.buff, dest_xy, area=src_xywh)
+                    
+                    if draw_2:
+                        src2_xywh = (src2_x, 0, src2_w, buff_h)
+                        dest2_xy = (dest2_x, txt_y)
+                        surf.blit(self.buff, dest2_xy, area=src2_xywh)
+                    
+                else:
+                    dest_xy = (0, txt_y)
+                    src_w = self.width - 11
+                    src_xywh = (0, 0, src_w, buff_h)
+                    surf.blit(self.buff, dest_xy, area=src_xywh)
+                    
+                    # ellipses
+                    dot_y = txt_y + buff_h - 2 - 3
+                    for i in [1, 5, 9]:
+                        dot_x = src_w + i
+                        surf.fill(fg, (dot_x, dot_y, 2, 2))
+                    
+                    nxt = None
+                        
+            else:
+                surf.blit(self.buff, (txt_x, txt_y))
+                
+                nxt = None
+                # no animation
+            
+            return nxt
+    
+    def _setup(self, graf_props, items=["My name is Elliot Nunn.","Two","eight","acquire","stuff"]):
+        self.font = pygame.freetype.Font("chicago.bdf")
+        
+        self.item_widgets = []
+        for i in range(0,4):
+            w = self.MenuItemWidget()
+            w.setup(items[i], self.font, self.width, 13)
+            self.item_widgets.append(w)
+        
+        self.selection = 0
+        self.item_widgets[self.selection].set_selected(True, time.clock())
+        self.scroll = 0
+        
+    def _draw_frame(self, buffer, is_initial):
+        nxt = sys.maxsize
+        
+        for i in range(self.scroll, 4):
+            widget = self.item_widgets[i % 4]
+            widget_nxt = widget.draw(buffer, (0, 13*(i-self.scroll)), self.t)
+            if widget_nxt==None:
+                widget_nxt = sys.maxsize
+                print("   widget wants no frame")
+            elif widget_nxt == self.t:
+                print("   widget wants to draw right now")
+            else:
+                print("   widget wants to draw at %f" % widget_nxt)
+            nxt = min(nxt, widget_nxt)
+        
+        if nxt==sys.maxsize: nxt = None
+        
+        return nxt
+
 class ProtoMenu(Client): # a bit of a mess, and poorly optimised
-    def draw_frame(self, buffer, is_initial):
+    def _draw_frame(self, buffer, is_initial):
         blk = (0, 0, 0)
         wht = (255, 255, 255)
         # blk, wht = wht, blk # cheeky
@@ -193,11 +341,15 @@ class ProtoMenu(Client): # a bit of a mess, and poorly optimised
             pygame.draw.line(buffer, blk, (self.view_width + 1, self.titlearea_height - 1), (self.view_width + 1, self.height))
             pygame.draw.rect(buffer, blk, (self.view_width + 3, self.scrollbar_pos + self.titlearea_height, self.scrollbararea_width - 3, self.scrollbar_height))
     
-    def __init__(self, graf_props, items, title="untitled"):
+    #def __init__(self, graf_props, items, title="untitled"):
+    def _setup(self, graf_props, **kwargs):
         # will NOT change
+        title = kwargs["title"]
+        if title == "": title = "untitled"
         self.title = title.upper()
         
-        self.items = items # list of tuples: ("Artists>>>", a function)
+        self.items = kwargs["items"]
+        # list of tuples: ("Artists>>>", a function)
         self.item_count = len(self.items)
         
         self.titlearea_height = 12
@@ -224,9 +376,9 @@ class ProtoMenu(Client): # a bit of a mess, and poorly optimised
         self.selected = 0
         self.scrollbar_pos = 0
         
-        Client.__init__(self, graf_props)
+        #Client.__init__(self, graf_props)
         
-    def event(self, event):
+    def _event(self, event):
         do_redraw = False
         do_change_scrollbar = False
         

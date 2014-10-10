@@ -5,11 +5,11 @@
 // extern void deinit();
 // extern void fling_buffer(char *buffer);
 
-#define CS_PIN 2
-#define RST_PIN 3
-#define A0_PIN 4
-#define CLK_PIN 27
-#define SI_PIN 17
+#define CS_PIN 24 // 2
+#define RST_PIN 17 // 3
+#define A0_PIN 22 // 4
+#define CLK_PIN 27 // 27
+#define SI_PIN 23 // 17
 
 
 #define set_pin(pin, val) bcm2835_gpio_write(pin, val)
@@ -107,6 +107,8 @@ void fling_buffer(char *buffer) {
 			
 			lcd_byte(page_content);
 		} // col
+		
+		 // back into command mode
 	} // page
 	
 	set_pin(CS_PIN, HIGH); // or it won't respond later?
@@ -127,7 +129,7 @@ int init() {
 	
 	set_pin(CS_PIN, LOW); // we only ever need to set this once
 	set_pin(RST_PIN, LOW); set_pin(RST_PIN, HIGH);
-	set_pin(A0_PIN, LOW); // command mode
+	set_pin(A0_PIN, LOW); // fling_buffer also leaves this low
 	
     lcd_byte(0xe2); // reset
     lcd_byte(0xa3); // set lcd voltage bias to 1/9 (a2) or 1/7 (a3)

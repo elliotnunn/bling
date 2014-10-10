@@ -4,11 +4,11 @@ import RPi.GPIO as GPIO
 import random
 import time
 
-LCD_CS = 2
-LCD_RST  = 3
-LCD_A0 = 4
+LCD_CS = 24 # 2
+LCD_RST  = 17 # 3
+LCD_A0 = 22 # 4
 LCD_CLK = 27
-LCD_SI = 17
+LCD_SI = 23 # 17
 
 def main():
    io_init()
@@ -19,12 +19,13 @@ def main():
    #lcd_ascii168_string(0,6,"@ABCDEFGHIJKLMNO")
    time.sleep(2)
    
-   for i in range(1,128):
+   while True:
        randbyte = random.randint(0, 255)
        for page in range(0, 8):
            lcd_set_page(page, 0)
            for col in range(1, 133):
                lcd_tranfer_data(randbyte, 1)
+       time.sleep(2)
 
 def io_init():
    GPIO.setmode(GPIO.BCM)

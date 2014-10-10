@@ -1,12 +1,12 @@
 import pygame
-from bling_core import *
+import bling_core
 import os
 
-class DesktopServer(Server):
+class DesktopServer(bling_core.Server):
     screen = None;
     
     def __init__(self, graf_props, to_framebuffer=False, scale_to_size=None):
-        Server.__init__(self)
+        bling_core.Server.__init__(self)
         
         self.scale_to_size = scale_to_size
         
@@ -17,6 +17,7 @@ class DesktopServer(Server):
             screen_flags = pygame.FULLSCREEN
         
         else:
+            os.putenv("SDL_VIDEODRIVER", "dummy")
             if scale_to_size == None:
                 screen_size = graf_props[0:2]
             else:
