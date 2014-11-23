@@ -15,9 +15,10 @@ class ST7575Server(bling_core.Server):
     
     def notify_client_dirty(self):
         client = self.client
-        client.buffer_lock.acquire()
-        self.libbuff.fling_buffer(client.get_buffer(True)._pixels_address)
-        client.buffer_lock.release()
+        self.libbuff.fling_buffer(client.fbuff._pixels_address)
+        pygame.time.wait(50)
+        try: client.sync_sem.release()
+        except: pass
     
     def deinit(self):
         self.libbuff.deinit()

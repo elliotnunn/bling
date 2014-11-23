@@ -16,7 +16,7 @@ pygame.display.set_mode((1,1), pygame.NOFRAME)
 libbuff = ctypes.CDLL('buff/libbuff.so')
 
 # painful contortions to get an 8-bit surface
-surf = pygame.image.load ("screenshot.png").convert (8)
+surf = pygame.image.load ("supertest-image.png").convert (8)
 palette = tuple([(i, i, i) for i in range(0, 255)])
 surf2 = pygame.Surface ((128, 64), depth=8)
 surf2.set_palette (palette)

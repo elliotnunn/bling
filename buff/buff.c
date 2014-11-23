@@ -1,101 +1,107 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <bcm2835.h>
 
-// extern int init();
-// extern void deinit();
-// extern void fling_buffer(char *buffer);
+extern int init();
+extern void deinit();
+extern void fling_buffer(char *buffer);
 
-#define CS_PIN 24 // 2
-#define RST_PIN 17 // 3
-#define A0_PIN 22 // 4
-#define CLK_PIN 27 // 27
-#define SI_PIN 23 // 17
-
-
-#define set_pin(pin, val) bcm2835_gpio_write(pin, val)
-
-#define lcd_byte(byte)                                          \
-for (int which_lcd_bit=0; which_lcd_bit<8; which_lcd_bit++) {   \
-	set_pin(CLK_PIN, LOW);                                      \
-	set_pin(SI_PIN, ((byte) << which_lcd_bit) & 0x80);          \
-	set_pin(CLK_PIN, HIGH);                                     \
-}
-
-#define lcd_transfer_data(byte, is_data) lcd_byte(byte);
-
-#define lcd_jump(page, col) {             \
-	char page_cmd = page | 0xb0;          \
-	char col_high = (col >> 4) | 0x10;    \
-	char col_low = col & 0x0f;            \
-	lcd_byte(page_cmd);                   \
-	lcd_byte(col_high);                   \
-	lcd_byte(col_low);                    \
-}
-
+#define PIN_CS_B 24  /* chip select, active low */
+#define PIN_RST_B 17 /* reset, active low */
+#define PIN_A0 22    /* register select, high=display, low=control */
+#define PIN_SCLK 27  /* serial input clock */
+#define PIN_SID 23   /* serial input data */
+#define PINS {PIN_CS_B, PIN_RST_B, PIN_A0, PIN_SCLK, PIN_SID}
 
 #define PAGE_COUNT 8
 #define COL_COUNT 128
+#define PIXEL_COUNT (PAGE_COUNT*COL_COUNT*8)
+#define DITH_AMT 101
+#define LEFT_OVERSCAN 4
+
+#define send_byte(byte)                                                        \
+for (int which_lcd_bit=0; which_lcd_bit<8; which_lcd_bit++) {                  \
+	bcm2835_gpio_write(PIN_SID, ((byte) << which_lcd_bit) & 0x80);             \
+	bcm2835_delayMicroseconds(1);       /* T[DSS] data setup time and */       \
+	                                    /* T[WLS] SCLK low pulse width. */     \
+	bcm2835_gpio_write(PIN_SCLK, HIGH); /* SCLK's rising edge separated. */    \
+	bcm2835_delayMicroseconds(1);       /* T[DHS] data hold time and */        \
+	                                    /* T[WHS] SCLK high pulse width. */    \
+	bcm2835_gpio_write(PIN_SCLK, LOW);                                         \
+} /* These also satisfy the hold and setup timings for A0 and CS_B. */
+
+#define page_jump_cmd(page)        (page | 0xb0)
+#define col_jump_cmd_high(col)     ((col >> 4) | 0x10)
+#define col_jump_cmd_low(col)      (col & 0x0f)
 
 
-// int main(int argc, char **argv) {
-// 	
-// 	if (init() == 0) {
-// 		return 1;
-// 	}
-// 	
-// 	srand(time(NULL));
-// 	char buf_frame[8448];
-// 	
-// 	// create a gradient
-// 	for (int i=0; i<8448; i++) {
-// 		buf_frame[i] = rand() & 0xff;
-// 	}
-// 	
-// 	fling_buffer(buf_frame);
-// 	
-// 	return 0;
-// }
+int init()
+{
+	if (bcm2835_init() == 0) {
+		return 0;
+	}
+	
+	/* Init all pins: low output. "_B" is a convention meaning "active low". */
+	/* PIN_CS_B unused; pulling it high could stop the LCD from listening. */
+	uint8_t pins[] = PINS;
+	for (int i=0; i<5; i++) {
+		bcm2835_gpio_fsel(pins[i], BCM2835_GPIO_FSEL_OUTP);
+		bcm2835_gpio_write(pins[i], LOW);
+	}
+	
+	bcm2835_delayMicroseconds(1); /* RST_B low pulse width */
+	bcm2835_gpio_write(PIN_RST_B, HIGH);
+	bcm2835_delayMicroseconds(1); /* t[R]: reset time */
+	
+	send_byte(0xaf);   /*  1. display on (0xaf) or off (0xae)                 */
+	//send_byte(0x40); /*  2. first display line (0x40 | 6 bits)              */
+	send_byte(0xa1);   /*  8. LCD scan normal (0xa0) or reverse (0xa1)        */
+	send_byte(0xa7);   /*  9. normal 1=white (0xa7) or reverse 1=black (0xa6) */
+	//send_byte(0xa4); /* 10. every pixel black (0xa5) or not (0xa4)          */
+	send_byte(0xa3);   /* 11. LCD voltage bias 1/9 (0xa2) or 1/7 (0xa3)       */
+	//send_byte(0xe2); /* 14. reset, not inc memory or LCD power              */
+	//send_byte(0xc0); /* 15. LCD scan downwards (0xc0) or upwards (0xc8)     */
+	send_byte(0x2f);   /* 16. internal power supply mode:
+	                      0x28 | 0x04 (internal voltage converter circuit)
+	                           | 0x02 (internal voltage regulator circuit)
+	                           | 0x01 (internal voltage follower circuit)     */
+	send_byte(0x22);   /* 17. resistor ratio:
+	                          0x20 | (3 bits) such that (1 + Rb/Ra) =
+	                          3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.4          */
+	send_byte(0x81);   /* 18. reference voltage (2 byte command)              */
+	send_byte(47);     /*     low contrast (0) to high contrast (63)          */
+	
+	return 1;
+}
 
 
-void fling_buffer(char *buffer) {
-	// buffer must be 132x64 = 8448 chars
-	
-	// char buf_rand[8448*65];
-	// // populate the random pixel buffer
-	// for (int i=0; i<8448*65; i++) {
-	// 	buf_rand[i] = rand() & 0xff;
-	// }
-			
-	// // create a gradient
-	// for (int y=0; y<64; y++) {
-	// 	for (char x=0; x<132; x++) {
-	// 		buffer[132*y+x] = x;
-	// 	}
-	// }
-	
-	// for (int y=0; y<64; y++) {
-	// 	for (int x=0; x<132; x++) {
-	// 		printf("%02x ", buffer[y*132 + x]);
-	// 	}
-	// 	printf("\n");
-	// }
-	// 
-	// return;
-	
-	set_pin(CS_PIN, LOW); // "Listen up!"
-	
-	char lcd_pages[PAGE_COUNT * COL_COUNT];
+void deinit()
+{
+	uint8_t pins[] = PINS;
+	for (int i=0; i<5; i++) {
+		bcm2835_gpio_write(pins[i], LOW);
+		bcm2835_gpio_fsel(pins[i], BCM2835_GPIO_FSEL_INPT);
+	}
+}
+
+
+/* one byte per pixel please ... we only use the most sig bit */
+void fling_buffer(char *buffer)
+{
 	char page_content;
-	int buf_offset, lcd_offset;
-	//int rand_offset;
+	int buf_offset;
 	
-	//rand_offset = rand() & 63;
-
 	for (char page=0; page<PAGE_COUNT; page++) {
-		set_pin(A0_PIN, LOW);
-		lcd_jump(page, 4); // jump to the first column of this page
+		/* only need to issue jump instructions once */
+		/* because every display data increments the col counter */
+		bcm2835_gpio_write(PIN_A0, LOW);
+		send_byte(page_jump_cmd(page));
+		send_byte(col_jump_cmd_high(LEFT_OVERSCAN));
+		send_byte(col_jump_cmd_low(LEFT_OVERSCAN));
 		
-		set_pin(A0_PIN, HIGH); // prepare for data!
+		//lcd_jump(page, 4); // jump to the "first" column of this page
+		
+		bcm2835_gpio_write(PIN_A0, HIGH); // prepare for data!
 		for (char col=0; col<COL_COUNT; col++) {		
 			page_content = 0;
 			
@@ -105,116 +111,60 @@ void fling_buffer(char *buffer) {
 				page_content |= buffer[buf_offset] & 0x80;
 			} // bit
 			
-			lcd_byte(page_content);
+			send_byte(page_content);
 		} // col
-		
-		 // back into command mode
 	} // page
+} // fling_buffer
+
+
+/* World's Ugliest Test Pattern:
+   A dithered horizontal gradient (dark on the left)
+   with black lines along the top and right edges. */
+int main(int argc, char **argv)
+{
+ 	if (init() == 0) {
+ 		return 1;
+ 	}
 	
-	set_pin(CS_PIN, HIGH); // or it won't respond later?
-}
-
-
-int init() {
-	if (bcm2835_init() == 0) {
-		return 0;
+	/* fill DITH_AMT screens' worth of memory with fuzz */
+	char rand_buffer[PIXEL_COUNT*DITH_AMT];
+	
+	char rand_char;
+	srand(0x12345678);
+	for (int i=0; i<PIXEL_COUNT*DITH_AMT; i++) {
+		rand_char = rand() & 0xff;
+		/* I think this will allow for full white and full black?? */
+		//rand_char = rand_char<128 ? rand_char : rand_char-1;
+		rand_buffer[i] = rand_char;
 	}
 	
-	// all five pins are for 'riting
-	bcm2835_gpio_fsel(CS_PIN,  BCM2835_GPIO_FSEL_OUTP);
-	bcm2835_gpio_fsel(RST_PIN, BCM2835_GPIO_FSEL_OUTP);
-	bcm2835_gpio_fsel(A0_PIN,  BCM2835_GPIO_FSEL_OUTP);
-	bcm2835_gpio_fsel(CLK_PIN, BCM2835_GPIO_FSEL_OUTP);
-	bcm2835_gpio_fsel(SI_PIN,  BCM2835_GPIO_FSEL_OUTP);
+	/* do up a test pattern in glorious 8-bit monochrome */
+	char pic_buffer[PIXEL_COUNT];
 	
-	set_pin(CS_PIN, LOW); // we only ever need to set this once
-	set_pin(RST_PIN, LOW); set_pin(RST_PIN, HIGH);
-	set_pin(A0_PIN, LOW); // fling_buffer also leaves this low
+	for (int px=0; px<PIXEL_COUNT; px++) {
+		if ((px < COL_COUNT) || (px%COL_COUNT == 127)) {
+			pic_buffer[px] = 0;
+		} else if (px >= COL_COUNT*63) {
+			pic_buffer[px] = 255;
+		} else {
+			pic_buffer[px] = (px%COL_COUNT) * 2;
+		}
+	}
 	
-    lcd_byte(0xe2); // reset
-    lcd_byte(0xa3); // set lcd voltage bias to 1/9 (a2) or 1/7 (a3)
-    lcd_byte(0xa1); // set col sequence to rightwards (a0) or leftwards (a1)
-    lcd_byte(0xc0); // set com output scan direction to downwards (c0) or upwards (c8)
-    lcd_byte(0xa4); // display all points: on (a4) or off (a5)
-    lcd_byte(0xa7); // set display normal (a6) or reverse (a7)
-    lcd_byte(0x2f); // set internal power supp mode (0x28 | 3 bits)
-    lcd_byte(0x40); // set first display line (0x40 | 6 bits)
-    lcd_byte(0x22); // set resistor ratio (0x20 | 3 bits)
-    lcd_byte(0x81); // command to set electronic volume mode
-    lcd_byte(0x28); // continued: 6 bits
-    lcd_byte(0xaf); // set display on (af) or off (ae)
+	char buffer[PIXEL_COUNT];
 	
-	set_pin(CS_PIN, HIGH);
-	
-	return 1;
+	int rand_offset = 0;
+	for (int i=0; i<300; i++) {
+		rand_offset += 5345; /* seriously just made this up */
+		rand_offset %= PIXEL_COUNT * (DITH_AMT-1);
+		
+		for (int px=0; px<PIXEL_COUNT; px++) {
+			buffer[px] = (rand_buffer[px+rand_offset] < pic_buffer[px]) << 7;
+		}
+		
+		fling_buffer(buffer);
+	}
+ 	
+	deinit();
+	return 0;
 }
-
-
-void deinit() {
-	set_pin(CS_PIN, LOW);
-	bcm2835_gpio_fsel(CS_PIN,  BCM2835_GPIO_FSEL_INPT);
-	bcm2835_gpio_fsel(RST_PIN, BCM2835_GPIO_FSEL_INPT);
-	bcm2835_gpio_fsel(A0_PIN,  BCM2835_GPIO_FSEL_INPT);
-	bcm2835_gpio_fsel(CLK_PIN, BCM2835_GPIO_FSEL_INPT);
-	bcm2835_gpio_fsel(SI_PIN,  BCM2835_GPIO_FSEL_INPT);
-}
-
-
-// 	srand(time(NULL));
-// 	
-// 	char page_cmd, col_high, col_low;
-// 	
-// 	// draws a simple test pattern
-// 	if (0)
-// 	{
-// 		for (char page=0; page<8; page++) {
-// 			set_pin(A0_PIN, LOW);
-// 			lcd_jump(page, 0);
-// 			set_pin(A0_PIN, HIGH);
-// 			for (char col=0; col<132; col++) {
-// 				lcd_byte(0x02);
-// 			}
-// 		}
-// 		bcm2835_delay(1);
-// 	}
-// 	
-// 	char buf_rand[8448*65];
-// 	// populate the random pixel buffer
-// 	for (int i=0; i<8448*65; i++) {
-// 		buf_rand[i] = rand() & 0xff;
-// 	}
-// 	
-// 	char buf_frame[8448], lcd_pages[1056];
-// 	char page_content;
-// 	int buf_offset, lcd_offset, rand_offset;
-// 		
-// 	// create a gradient
-// 	for (int y=0; y<64; y++) {
-// 		for (char x=0; x<132; x++) {
-// 			buf_frame[132*y+x] = x;
-// 		}
-// 	}
-// 	while (1)
-// 	{
-// 		
-// 		buf_offset = 0;
-// 		rand_offset = rand() & 63;
-// 
-// 		for (char page=0; page<8; page++) {
-// 			set_pin(A0_PIN, LOW);
-// 			lcd_jump(page, 0);
-// 			set_pin(A0_PIN, HIGH); // prepare for data!
-// 			for (char col=0; col<132; col++) {		
-// 				page_content = 0;
-// 				for (char bit=0; bit<8; bit++) {
-// 					buf_offset = page*132*8 + bit*132 + col;
-// 					page_content <<= 1;
-// 					page_content |= (buf_frame[buf_offset] < buf_rand[rand_offset + buf_offset]);
-// 				} // bit
-// 				lcd_byte(page_content);
-// 			} // col
-// 		} // page
-// 		
-// 	}
-// 	
-// 	set_pin(CS_PIN, HIGH); // or it won't respond later?

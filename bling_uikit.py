@@ -2,6 +2,7 @@ import bling_core
 import pygame.freetype
 import time
 import sys
+import threading
 
 class Compositor(bling_core.Client, bling_core.Server):
     def pre_frame(self): pass
@@ -15,6 +16,8 @@ class Compositor(bling_core.Client, bling_core.Server):
         # - drawing a transformed image at the coordinates set by an animation
         # my_back_buffer.fill((255, 255, 255))
         
+        # Ignore the above. It is now smarter.
+        
         first_to_draw = 0
         for i in reversed(range(0, len(self.clients))):
             client_tuple = self.clients[i]
@@ -24,20 +27,26 @@ class Compositor(bling_core.Client, bling_core.Server):
                     break
         if first_to_draw < len(self.clients) - 2: print("inefficient!")
         
-        for i in range(first_to_draw, len(self.clients)):
+        for i in range(0, first_to_draw):
+            self.clients[i][0].sync_sem.release()
+        
+        for i in range(0, len(self.clients)):
             client_tuple = self.clients[i]
             client = client_tuple[0]
-            offset = client_tuple[1:3]
             
-            # Client may not swap buffers while we are blitting its front buffer!
-            client.buffer_lock.acquire()
-            buffer.blit(client.get_buffer(True), offset)
-            client.buffer_lock.release()
+            if i >= first_to_draw:
+                offset = client_tuple[1:3]
+                # Client may not swap buffers while we are blitting its front buffer!
+                buffer.blit(client.fbuff, offset)
+            
+            try: client.sync_sem.release()
+            except: pass
 
         self.client_list_lock.release()
         
         return nxt
-        
+    
+    # Should actually remove the following two methods; ugly duplication of FabCompositor
     def add_client(self, client):
         self.client_list_lock.acquire()
         self.clients.append((client, 0, 0))
@@ -46,7 +55,9 @@ class Compositor(bling_core.Client, bling_core.Server):
         client.parent_server = self
         client.event("fully-onscreen")
         if len(clients) >= 2: clients[-2].event("covered")
-        self.dirty.set()
+        
+        try: self.evt_sem.release()
+        except: pass
     
     def remove_client(self, client):
         self.client_list_lock.acquire()
@@ -58,14 +69,17 @@ class Compositor(bling_core.Client, bling_core.Server):
         
         client.parent_server = None
         client.event("offscreen")
-        self.dirty.set()
+        
+        try: self.evt_sem.release()
+        except: pass
     
     def notify_client_dirty(self):
-        self.dirty.set()
+        try: self.evt_sem.release()
+        except: pass
     
     def __init__(self, graf_props):
-        Client.__init__(self, graf_props)
-        Server.__init__(self)
+        bling_core.Client.__init__(self, graf_props)
+        bling_core.Server.__init__(self)
     
     def _setup(self, graf_props):
         print("running setup")
@@ -76,18 +90,21 @@ class Compositor(bling_core.Client, bling_core.Server):
     def _event(self, event): # this is pretty ugly
         if event == "quit":
             self.quit_flag = True
-            self.dirty.set()
             
             self.client_list_lock.acquire()
             for client_tuple in self.clients:
                 client_tuple[0].event("quit")
             self.client_list_lock.release()
             
+            return True
+            
         elif event == "screenshot":
             filename = "screenshot/bling @ %s.png" % time.ctime()
             self.buffer_lock.acquire()
             pygame.image.save(self.get_buffer(True), filename)
             self.buffer_lock.release()
+            
+            return False
             
         else:
             self.client_list_lock.acquire()
@@ -97,6 +114,8 @@ class Compositor(bling_core.Client, bling_core.Server):
                 client_tuple[0].event(event)
             else:
                 self.client_list_lock.release()
+            
+            return False
 
 
 class FabCompositor(Compositor):
@@ -106,15 +125,15 @@ class FabCompositor(Compositor):
             if i > len(self.clients)-1: print("oh crap!")
             # The tuples in self.clients are of the form (client, x_pos, y_pos) by default.
             # This subclass extends them to (client, x_pos, y_pos, animation),
-            # where animation = (start_time_in_s, duration_in_s, direction), and
+            # where animation = (start_time_in_ms, duration_in_ms, direction), and
             # direction is -1 for sliding out to the right, and 1 for sliding in from the right
             (client, x, y, animation) = self.clients[i][0:4]
             
             if animation != None:
-                (start_time, duration, direction) = animation #unpack the tuple in the tuple in self.clients
-                time_elapsed = time.clock() - start_time
+                (start_time_ms, duration_ms, direction) = animation #unpack the tuple in the tuple in self.clients
+                time_elapsed_ms = pygame.time.get_ticks() - start_time_ms
                 
-                if time_elapsed >= duration: #put a stop to this animation
+                if time_elapsed_ms >= duration_ms: #put a stop to this animation
                     animation = None
                     if direction == -1: # this was a fuck-off animation
                         self.clients.pop(i) # DANGEROUS, and bit me on the ass!
@@ -126,7 +145,7 @@ class FabCompositor(Compositor):
                         client.event("fully-onscreen")
                         
                 else:
-                    progress = time_elapsed / duration * self.width
+                    progress = time_elapsed_ms / duration_ms * self.width
                     if direction == -1: # ie sliding out to the right
                         x = progress
                     elif direction == 1: # sliding in from the right
@@ -134,25 +153,28 @@ class FabCompositor(Compositor):
                         
                     self.clients[i] = (client, x, 0, animation)
                     
-                    return self.t
+                    return -1
     
-    def add_client(self, client, anim_duration=0.2):
+    def add_client(self, client, anim_duration_ms=1000):
         self.client_list_lock.acquire()
-        self.clients.append((client, 0, 0, (time.clock(), anim_duration, 1)))
+        self.clients.append((client, 0, 0, (pygame.time.get_ticks(), anim_duration_ms, 1)))
         self.client_list_lock.release()
         
         client.parent_server = self
-        self.dirty.set()
+        
+        try: self.evt_sem.release()
+        except: pass
     
-    def remove_client(self, client, anim_duration=0.2):
+    def remove_client(self, client, anim_duration_ms=1000):
         self.client_list_lock.acquire()
         for i in reversed(range(0, len(self.clients))):
             if self.clients[i][0] == client:
-                self.clients[i] = (self.clients[i][0], 0, 0, (time.clock(), anim_duration, -1))
+                self.clients[i] = (self.clients[i][0], 0, 0, (pygame.time.get_ticks(), anim_duration_ms, -1))
                 break
         self.client_list_lock.release()
         
-        self.dirty.set()
+        try: self.evt_sem.release()
+        except: pass
 
 
 class TimeTest(bling_core.Client):
@@ -379,42 +401,32 @@ class ProtoMenu(bling_core.Client): # a bit of a mess, and poorly optimised
         #Client.__init__(self, graf_props)
         
     def _event(self, event):
-        do_redraw = False
-        do_change_scrollbar = False
-        
         if event == "back":
             self.parent_server.remove_client(self)
-            # will eventually result in an "offscreen" event
+            return False
         
-        if event == "up":
-            if self.selected > 0:
-                self.selected -= 1
-                do_redraw = True
-                max_scroll = self.selected * self.item_height
-                if self.scroll > max_scroll:
-                    self.scroll = max_scroll
-                    do_change_scrollbar = True
-                
-        if event == "down":
-            if self.selected < self.item_count - 1:
-                self.selected += 1
-                do_redraw = True
-                min_scroll = (self.selected + 1) * self.item_height - self.view_height
-                if self.scroll < min_scroll:
-                    self.scroll = min_scroll
-                    do_change_scrollbar = True
-        
-        if event == "quit" or event == "offscreen":
-            self.quit_flag = True
-            do_redraw = True
-        
-        if event == "ok":
+        elif event == "ok":
             func = self.items[self.selected][1]
             if func != None: func(self.parent_server)
+            return False
         
-        if do_change_scrollbar:
-            scrollbar_max = self.view_height - self.scrollbar_height + 1
-            scroll_max = self.content_height - self.view_height
-            self.scrollbar_pos = scrollbar_max * self.scroll / scroll_max
+        elif event == "up":
+            if self.selected > 0:
+                self.selected -= 1
+                max_scroll = self.selected * self.item_height
+                if self.scroll > max_scroll: self.scroll = max_scroll
+                
+        elif event == "down":
+            if self.selected < self.item_count - 1:
+                self.selected += 1
+                min_scroll = (self.selected + 1) * self.item_height - self.view_height
+                if self.scroll < min_scroll: self.scroll = min_scroll
         
-        if do_redraw: self.dirty.set()
+        else:
+            return None
+        
+        scrollbar_max = self.view_height - self.scrollbar_height + 1
+        scroll_max = self.content_height - self.view_height
+        self.scrollbar_pos = scrollbar_max * self.scroll / scroll_max
+        
+        return True

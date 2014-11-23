@@ -15,6 +15,9 @@ class MainMenu(bling_uikit.ProtoMenu):
         
         items = []
         
+        def spawn_rapidfire(server): server.add_client(bling_misc.RapidFire(graf_props))
+        items.append(("RapidFire>", spawn_rapidfire))
+        
         def spawn_picture_menu(server): server.add_client(bling_misc.PrettyPicture(graf_props, file="pics/happy_clock.BMP"))
         items.append(("Picture>", spawn_picture_menu))
         

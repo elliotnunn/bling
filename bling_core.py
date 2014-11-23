@@ -19,17 +19,16 @@ class Client(threading.Thread):
         self.have_bailed = False
         
         # set up two buffers
-        self.buffer_a = pygame.Surface((self.width, self.height), depth=self.depth)
-        self.buffer_b = pygame.Surface((self.width, self.height), depth=self.depth)
-        self.buffer_a.set_palette(self.palette)
-        self.buffer_b.set_palette(self.palette)
-        self.which_buffer = True # True means buffer_a is front
-        self.buffer_lock = threading.Lock()
+        self.fbuff = pygame.Surface((self.width, self.height), depth=self.depth)
+        self.bbuff = pygame.Surface((self.width, self.height), depth=self.depth)
+        self.fbuff.set_palette(self.palette)
+        self.bbuff.set_palette(self.palette)
         
         # start life as an orphan
         self.parent_server = None
         
-        self.dirty = threading.Event()
+        self.evt_sem = threading.Lock()  # acts as a semaphore
+        self.sync_sem = threading.Lock() # and has no concept of owning thread
         
         (self.t, self.nxt) = (pygame.time.get_ticks()/1000, None)
         
@@ -39,86 +38,79 @@ class Client(threading.Thread):
             self.__bail("while initialising")
         else:
             try:
-                self.nxt = self._draw_frame(buffer=self.buffer_a, is_initial=True)
+                # draw an initial frame synchronously
+                self.nxt = self._draw_frame(buffer=self.fbuff, is_initial=True)
             except:
                 self.__bail("while drawing its initial frame")
             else:
-                self.buffer_b.blit(self.buffer_a, (0, 0))
+                self.bbuff.blit(self.fbuff, (0, 0))
                 self.start()
     
     def _setup(self, graf_props, **kwargs):
-        # gets called right before __init__ returns
-        # buffers are ready, etc
-        # should defs be overridden
-        # The following is ONLY for compatibility with older
-        # Clients which override __init__ instead of _setup.
+        # gets called right before the first frame is drawn
         pass
     
     def run(self): 
         while self.quit_flag==False:
-            # Choose how long to wait before drawing a frame
-            if self.nxt == None: self.nxt = sys.maxsize
-            if self.nxt == -1: self.nxt = self.t
-            if self.nxt < self.t + 50: self.nxt = self.t
+            # first must not draw frame before app demands
+            if self.nxt == sys.maxsize or self.nxt == None:
+                self.evt_sem.acquire() # wait indef until sem released
+            else:
+                timeout_ms = self.nxt - pygame.time.get_ticks()
+                if timeout_ms > 0:
+                    self.evt_sem.acquire(timeout=timeout_ms/1000)
+                else:
+                    self.evt_sem.acquire(blocking=False)
             
-            if self.nxt == sys.maxsize: # until woken
-                if self.__class__.__name__=="FabCompositor": print("waiting forever")
-                self.dirty.wait()
-                self.dirty.clear()
-                
-            else:                                           # arbitrary
-                if self.__class__.__name__=="FabCompositor":
-                    print("waiting from %d to %d" % (pygame.time.get_ticks(), self.nxt))
-                self.dirty.wait((self.nxt - pygame.time.get_ticks()) / 1000)
-                self.dirty.clear()
+            # second must not draw frame before Server allows
+            self.sync_sem.acquire()
             
-            # Draw the actual frame
+            # at this point we are committed to drawing a frame without delay
             try:
-                self.t = pygame.time.get_ticks() # update frame-time
-                self.nxt = self._draw_frame(buffer=self.get_buffer(False),
-                                              is_initial=False)
-                
+                self.t = pygame.time.get_ticks() # update canonical frame time
+                self.nxt = self._draw_frame(buffer=self.bbuff, is_initial=False)
+            
             except:
                 self.__bail("while drawing a frame")
                 self.quit_flag = True # escape from this loop right now
             
             else:
-                # Flip the buffers
-                self.buffer_lock.acquire()
-                self.which_buffer = not self.which_buffer
-                self.buffer_lock.release()
+                # this is safe 
+                self.fbuff, self.bbuff = self.bbuff, self.fbuff
                 
-                # Notify our server, if we have one -- race condition?
                 if self.parent_server != None:
                     self.parent_server.notify_client_dirty()
     
     def get_buffer(self, want_front):
-        return self.buffer_a if (self.which_buffer == want_front) \
-          else self.buffer_b
+        return self.fbuff if want_front else self.bbuff
     
     def event(self, event):
         # called by InputServers
         # Do not override this; override _event instead
         # catches exceptions in our event handling and skelefies this client
-        if self.have_bailed: # this code duplicates our _event function
-            if event == "quit" or event == "offscreen":
-                self.quit_flag = True
-                self.dirty.set()
-            elif event == "back":
-                self.parent_server.remove_client(self) # will eventually result in an "offscreen" event
-
+        if self.have_bailed:
+            Client._event(self, event)
+        
         else:
             try:
-                self._event(event)
+                release_evt_sem = self._event(event)
             except:
                 self.__bail("while handling an event")
+            else:
+                if release_evt_sem == True:
+                    try: self.evt_sem.release()
+                    except: pass
+                # perhaps add a better fallback someday, as described below
     
+    # Override this. Return True if you want _draw_frame to be called,
+    # False for nothing and None for a default handler to be called
     def _event(self, event):
         if event == "quit" or event == "offscreen":
             self.quit_flag = True
-            self.dirty.set()
+            return True
         elif event == "back":
             self.parent_server.remove_client(self) # will eventually result in an "offscreen" event
+            return False
     
     def _draw_frame(self, buffer=None, is_first=False):
         "Nothing"
@@ -132,13 +124,13 @@ class Client(threading.Thread):
 
 class Server:
     def notify_client_dirty(self):
-        "Nothing" # Clients will do self.dirty.set()
+        pass
     def add_client(self, client):
-        "Nothing"
+        pass
     def remove_client(self, client):
-        "Nothing"
+        pass
     def __init__(self):
-        "Nothing"
+        pass
 
 
 class InputServer:

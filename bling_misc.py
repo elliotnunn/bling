@@ -19,6 +19,41 @@ class Clock(bling_core.Client):
         
         self.count += 1
 
+class RapidFire(bling_core.Client):
+    def _setup(self, graf_props):
+        self.ifdel = 0
+        self.lastfire = self.t
+        
+        self.font = pygame.freetype.Font("chicago.bdf")
+        self.font.origin = True
+        self.font.antialiased = False
+        
+        self.fg = (0, 0, 0); self.bg = (255, 255, 255);
+    
+    def _draw_frame(self, buffer, is_initial):
+        delta = self.t - self.lastfire
+        self.lastfire = self.t
+        
+        if delta==0:
+            fps = 0
+        else:
+            fps = 1000 / delta
+        
+        buffer.fill(self.bg)
+        
+        self.font.render_to(buffer, (1, 12), "ifdel=%d" % self.ifdel, fgcolor=self.fg, bgcolor=self.bg)
+        self.font.render_to(buffer, (1, 24), "delta=%d" % delta, fgcolor=self.fg, bgcolor=self.bg)
+        self.font.render_to(buffer, (1, 36), "fps=%f" % fps, fgcolor=self.fg, bgcolor=self.bg)
+        
+        return self.t + self.ifdel
+    
+    def _event(self, event):
+        if event == "up":
+            self.ifdel+=10
+        elif event == "down":
+            self.ifdel-=10
+        else:
+            bling_core.Client._event(self, event)
 
 class PlaceholderMenu(bling_uikit.ProtoMenu):
     def _setup(self, graf_props):
