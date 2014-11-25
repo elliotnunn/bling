@@ -1,5 +1,8 @@
 import bling_core
 import bling_uikit
+import pygame
+
+global alarm_backend
 
 class AlarmBackend:
     def __init__(self):
@@ -43,43 +46,42 @@ class TimeChooser(bling_core.Client):
     
     def _event(self, event):
         if event == "up" or event == "down":
-            if event == "up":
-                amt = 1
-            else:
-                amt = -1
-            
             if self.mode == 1:
                 if event == "up" and self.minutes < 55:
                     self.minutes += 5
                 if event == "down" and self.minutes > 0:
                     self.minutes -= 5
-            
-            if self.mode == 0:
+                return True
+                
+            elif self.mode == 0:
                 if event == "up" and self.hours < 23:
                     self.hours += 1
                 if event == "down" and self.hours > 0:
                     self.hours -= 1
-            
-            self.dirty.set()
+                return True
         
         elif event == "ok":
             if self.mode == 0:
                 self.mode = 1
-                self.dirty.set()
+                return True
+                
             elif self.mode == 1:
                 if self.notifier != None:
                     self.notifier(self.hours, self.minutes)
-                Client._event(self, "back")
+                self.parent_server.remove_client(self)
+                return False
         
         elif event == "back":
             if self.mode == 1:
                 self.mode = 0
-                self.dirty.set()
+                return True
+                
             elif self.mode == 0:
-                Client._event(self, "back")
+                self.parent_server.remove_client(self)
+                return None
         
         else:
-            Client._event(self, event)
+            return None
     
     def __draw_arrow(self, surface, x, y, s=1):
         sz = 3
@@ -167,7 +169,7 @@ class AlarmsMenu(bling_uikit.ProtoMenu):
             alarmtypemenu_spawner = create_alarmtypemenu_spawner_for_day(day)
             items.append((menu_string, alarmtypemenu_spawner))
         
-        ProtoMenu._setup(self, graf_props, items=items, title="Alarms")
+        bling_uikit.ProtoMenu._setup(self, graf_props, items=items, title="Alarms")
 
 
 class AlarmTypeMenu(bling_uikit.ProtoMenu):
@@ -189,26 +191,27 @@ class AlarmTypeMenu(bling_uikit.ProtoMenu):
         items = []
         
         def timechooser_action(hrs, mins):
-            global_alarm_backend.set_alarm(days = day_numbers, type = "digital", hrs = hrs, mins = mins)
+            alarm_backend.set_alarm(days = day_numbers, type = "digital", hrs = hrs, mins = mins)
         def timechooser_spawner(server):
             timechooser = TimeChooser(graf_props=graf_props, notifier=timechooser_action, title=title)
             server.add_client(timechooser)
         items.append(("Set digital alarm>", timechooser_spawner))
         
         def use_analog_alarm(server):
-            global_alarm_backend.set_alarm(days = day_numbers, type = "analog")
+            alarm_backend.set_alarm(days = day_numbers, type = "analog")
             server.remove_client(self)
         items.append(("Use analog alarm", use_analog_alarm))
         
         def disable_alarm(server):
-            global_alarm_backend.set_alarm(days = day_numbers, type = "off")
+            alarm_backend.set_alarm(days = day_numbers, type = "off")
             server.remove_client(self)
         items.append(("Disable alarm", disable_alarm))
         
-        ProtoMenu._setup(self, graf_props, items=items, title=title)
+        bling_uikit.ProtoMenu._setup(self, graf_props, items=items, title=title)
     
     def _event(self, event):
         if event == "covered":
-            self.parent_server.remove_client(self, anim_duration=0)
+            self.parent_server.remove_client(self, anim_duration_ms=0)
+            return False
         else:
-            ProtoMenu._event(self, event)
+            return bling_uikit.ProtoMenu._event(self, event)

@@ -42,7 +42,7 @@ int init()
 	}
 	
 	/* Init all pins: low output. "_B" is a convention meaning "active low". */
-	/* PIN_CS_B unused; pulling it high could stop the LCD from listening. */
+	/* PIN_CS_B unused; pulling it high stops the LCD from listening. */
 	uint8_t pins[] = PINS;
 	for (int i=0; i<5; i++) {
 		bcm2835_gpio_fsel(pins[i], BCM2835_GPIO_FSEL_OUTP);

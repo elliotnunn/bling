@@ -37,22 +37,22 @@ class MainMenu(bling_uikit.ProtoMenu):
         items.append(("SexyMenu>", spawn_sexy_menu))
 
         
-        bling_uikit.ProtoMenu._setup(self, graf_props, items=items, title="Main menu")
+        bling_uikit.ProtoMenu._setup(self, graf_props, items=items, title="Zeitgeber")
     
-    def _event(self, event):
-        if event != "back": bling_uikit.ProtoMenu._event(self, event)
+    #def _event(self, event):
+        #print(event)
+        #if event != "back": return bling_uikit.ProtoMenu._event(self, event)
 
 
-global global_alarm_backend
-global_alarm_backend = menus_alarms.AlarmBackend()
+menus_alarms.alarm_backend = menus_alarms.AlarmBackend()
 
-if len(sys.argv) == 0:
-    envt = "desktop"
+if len(sys.argv) == 1:
+    envt = "rpi"
 else:
     envt = sys.argv[1]
 
-    palette = tuple([(i, i, i) for i in range(0, 255)])
-    graf_props = (128, 64, 8, palette)
+palette = tuple([(i, i, i) for i in range(0, 255)])
+graf_props = (128, 64, 8, palette)
 
 if envt == "rpi":
     import bling_hw_st7565
@@ -62,11 +62,8 @@ if envt == "rpi":
     pygame.init()
     pygame.display.set_mode((1,1), pygame.NOFRAME)
     
-    print("init hardware...")
     hw_server = bling_hw_st7565.ST7575Server()
-    print("done")
     input_server = bling_hw_terminal.StdinServer()
-
 elif envt == "desktop":
     import bling_hw_pygame
     import bling_hw_terminal
@@ -84,11 +81,14 @@ hw_server.add_client(compositor)
 input_server.add_client(compositor)
 
 main_menu = MainMenu(graf_props)
-compositor.add_client(main_menu)
+compositor.add_client(main_menu, anim_duration_ms=0 )
+print("You should now see a UI.")
 
 compositor.join() # block until compositor exits
 
 hw_server.deinit()
+print("I have exited cleanly.")
 
+# Ignore the really old comment below.
 # cutting out the compositor decreases frame-time by 1.6ms, from 15.1ms to 13.5ms
 # text drawing seems to be really slow, but blitting is fast!

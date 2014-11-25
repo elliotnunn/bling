@@ -41,19 +41,22 @@ class RapidFire(bling_core.Client):
         
         buffer.fill(self.bg)
         
-        self.font.render_to(buffer, (1, 12), "ifdel=%d" % self.ifdel, fgcolor=self.fg, bgcolor=self.bg)
-        self.font.render_to(buffer, (1, 24), "delta=%d" % delta, fgcolor=self.fg, bgcolor=self.bg)
-        self.font.render_to(buffer, (1, 36), "fps=%f" % fps, fgcolor=self.fg, bgcolor=self.bg)
+        self.font.render_to(buffer, (1, 12), "frame time", fgcolor=self.fg, bgcolor=self.bg)
+        self.font.render_to(buffer, (1, 24), "   set = %dms" % self.ifdel, fgcolor=self.fg, bgcolor=self.bg)
+        self.font.render_to(buffer, (1, 36), "   actual = %dms" % delta, fgcolor=self.fg, bgcolor=self.bg)
+        self.font.render_to(buffer, (1, 60), "rate = %dfps" % fps, fgcolor=self.fg, bgcolor=self.bg)
         
         return self.t + self.ifdel
     
     def _event(self, event):
         if event == "up":
             self.ifdel+=10
+            return True
         elif event == "down":
             self.ifdel-=10
+            return True
         else:
-            bling_core.Client._event(self, event)
+            return None
 
 class PlaceholderMenu(bling_uikit.ProtoMenu):
     def _setup(self, graf_props):
@@ -73,29 +76,28 @@ class CrashMenu(bling_uikit.ProtoMenu):
                 server.add_client(CrashyException(graf_props, crash_at=crash_at))
             return menuspawner
 
-        items = []
-        for x in ["_setup", "_event", "_draw_frame"]:
-            items.append((x, create_spawner(x)))
+        crashes = ["_setup", "_event", "_draw_frame 1st", "_draw_frame other"]
+        items = [(x, create_spawner(x)) for x in crashes]
         
         bling_uikit.ProtoMenu._setup(self, graf_props, items=items, title="Crash where?")
 
 class CrashyException(bling_core.Client):
-    def _setup(self, graf_props, crash_at="_setup"):
+    def _setup(self, graf_props, crash_at=""):
         self.crash_at = crash_at
-        
         if self.crash_at == "_setup":
-            self.__spit_dummy()
+            1/0
     
     def _event(self, event):
         if self.crash_at == "_event":
-            self.__spit_dummy()
+            1/0
+        elif event == "ok":
+            return True
     
     def _draw_frame(self, buffer, is_initial):
-        if self.crash_at == "_draw_frame":
-            self.__spit_dummy()
-    
-    def __spit_dummy(self):
-        1 / 0
+        if is_initial and self.crash_at == "_draw_frame 1st":
+            1/0
+        elif not is_initial and self.crash_at == "_draw_frame later":
+            1/0
 
 class PrettyPicture(bling_core.Client):
     def _setup(self, graf_props, **kwargs):
