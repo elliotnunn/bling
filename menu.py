@@ -15,6 +15,18 @@ class MainMenu(bling_uikit.ProtoMenu):
         
         items = []
         
+        import string
+        import random
+        chars = string.ascii_uppercase + string.ascii_lowercase + string.digits
+        
+        sml = []
+        for i in range(10):
+            it = "".join(random.SystemRandom().choice(chars) for _ in range(30))
+            sml.append(it)
+        
+        def spawn_sexy_menu(server): server.add_client(bling_uikit.SexyMenu(graf_props, items=sml))
+        items.append(("SexyMenu>", spawn_sexy_menu))
+        
         def spawn_rapidfire(server): server.add_client(bling_misc.RapidFire(graf_props))
         items.append(("RapidFire>", spawn_rapidfire))
         
@@ -32,16 +44,13 @@ class MainMenu(bling_uikit.ProtoMenu):
         
         def spawn_tt(server): server.add_client(bling_uikit.TimeTest(graf_props))
         items.append(("Time test>", spawn_tt))
-        
-        def spawn_sexy_menu(server): server.add_client(bling_uikit.SexyMenu(graf_props))
-        items.append(("SexyMenu>", spawn_sexy_menu))
 
         
         bling_uikit.ProtoMenu._setup(self, graf_props, items=items, title="Zeitgeber")
     
-    #def _event(self, event):
-        #print(event)
-        #if event != "back": return bling_uikit.ProtoMenu._event(self, event)
+    def _event(self, event):
+        if event == "back": return False
+        else: return bling_uikit.ProtoMenu._event(self, event)
 
 
 menus_alarms.alarm_backend = menus_alarms.AlarmBackend()

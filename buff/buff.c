@@ -5,13 +5,17 @@
 extern int init();
 extern void deinit();
 extern void fling_buffer(char *buffer);
+extern void bklt(int set);
+int main(int argc, char **argv);
 
 #define PIN_CS_B 24  /* chip select, active low */
 #define PIN_RST_B 17 /* reset, active low */
 #define PIN_A0 22    /* register select, high=display, low=control */
 #define PIN_SCLK 27  /* serial input clock */
 #define PIN_SID 23   /* serial input data */
-#define PINS {PIN_CS_B, PIN_RST_B, PIN_A0, PIN_SCLK, PIN_SID}
+#define PIN_BKLT 18  /* backlight, should be 5v PWM :( */
+#define PINS {PIN_CS_B, PIN_RST_B, PIN_A0, PIN_SCLK, PIN_SID, PIN_BKLT}
+#define PIN_COUNT 6
 
 #define PAGE_COUNT 8
 #define COL_COUNT 128
@@ -41,10 +45,12 @@ int init()
 		return 0;
 	}
 	
+	srand(0x12345678);
+	
 	/* Init all pins: low output. "_B" is a convention meaning "active low". */
 	/* PIN_CS_B unused; pulling it high stops the LCD from listening. */
 	uint8_t pins[] = PINS;
-	for (int i=0; i<5; i++) {
+	for (int i=0; i<PIN_COUNT; i++) {
 		bcm2835_gpio_fsel(pins[i], BCM2835_GPIO_FSEL_OUTP);
 		bcm2835_gpio_write(pins[i], LOW);
 	}
@@ -69,7 +75,7 @@ int init()
 	                          0x20 | (3 bits) such that (1 + Rb/Ra) =
 	                          3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.4          */
 	send_byte(0x81);   /* 18. reference voltage (2 byte command)              */
-	send_byte(47);     /*     low contrast (0) to high contrast (63)          */
+	send_byte(45);     /*     low contrast (0) to high contrast (63)          */
 	
 	return 1;
 }
@@ -78,7 +84,7 @@ int init()
 void deinit()
 {
 	uint8_t pins[] = PINS;
-	for (int i=0; i<5; i++) {
+	for (int i=0; i<PIN_COUNT; i++) {
 		bcm2835_gpio_write(pins[i], LOW);
 		bcm2835_gpio_fsel(pins[i], BCM2835_GPIO_FSEL_INPT);
 	}
@@ -99,8 +105,6 @@ void fling_buffer(char *buffer)
 		send_byte(col_jump_cmd_high(LEFT_OVERSCAN));
 		send_byte(col_jump_cmd_low(LEFT_OVERSCAN));
 		
-		//lcd_jump(page, 4); // jump to the "first" column of this page
-		
 		bcm2835_gpio_write(PIN_A0, HIGH); // prepare for data!
 		for (char col=0; col<COL_COUNT; col++) {		
 			page_content = 0;
@@ -108,6 +112,7 @@ void fling_buffer(char *buffer)
 			for (char bit=0; bit<8; bit++) {
 				buf_offset = page*COL_COUNT*8 + col + bit*COL_COUNT;
 				page_content >>= 1;
+				//page_content |= (buffer[buf_offset] > (rand() & 0xff)) << 7;
 				page_content |= buffer[buf_offset] & 0x80;
 			} // bit
 			
@@ -115,6 +120,12 @@ void fling_buffer(char *buffer)
 		} // col
 	} // page
 } // fling_buffer
+
+
+void bklt(int set)
+{
+	bcm2835_gpio_write(PIN_BKLT, (uint8_t)set);
+}
 
 
 /* World's Ugliest Test Pattern:

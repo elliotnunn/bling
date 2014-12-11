@@ -144,18 +144,18 @@ class TimeChooser(bling_core.Client):
 
 class AlarmsMenu(bling_uikit.ProtoMenu):
     def _setup(self, graf_props):
-        spc = ""
+        spc = "  "
         day_tuples = [
-            ("every day", "Every day>","Daily alarm:"),
-            ("weekdays",  "Weekdays>", "Weekday alarm:"),
-            ("weekends",  "Weekends>", "Weekend alarm:"),
-            ("monday",    spc+"Mon>",  "Monday alarm:"),
-            ("tuesday",   spc+"Tue>",  "Tuesday alarm:"),
-            ("wednesday", spc+"Wed>",  "Wednesday alarm:"),
-            ("thursday",  spc+"Thu>",  "Thursday alarm:"),
-            ("friday",    spc+"Fri>",  "Friday alarm:"),
-            ("saturday",  spc+"Sat>",  "Saturday alarm:"),
-            ("sunday",    spc+"Sun>",  "Sunday alarm:"),
+            ("every day", "Every day>",  "Daily alarm:"),
+            ("weekdays",  "Weekdays>",   "Weekday alarm:"),
+            ("weekends",  "Weekends>",   "Weekend alarm:"),
+            ("monday",    "Monday>",     "Monday alarm:"),
+            ("tuesday",   "Tuesday>",    "Tuesday alarm:"),
+            ("wednesday", "Wednesday>",  "Wednesday alarm:"),
+            ("thursday",  "Thursday>",   "Thursday alarm:"),
+            ("friday",    "Friday>",     "Friday alarm:"),
+            ("saturday",  "Saturday>",   "Saturday alarm:"),
+            ("sunday",    "Sunday>",     "Sunday alarm:"),
         ]
         
         def create_alarmtypemenu_spawner_for_day(day):

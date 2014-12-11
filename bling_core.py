@@ -22,6 +22,8 @@ class Client(threading.Thread):
         self.bbuff = pygame.Surface((self.width, self.height), depth=self.depth)
         self.fbuff.set_palette(self.palette)
         self.bbuff.set_palette(self.palette)
+        # NOCOPY hack
+        #self.skip_offering_buffer = False
         
         # start life as an orphan
         self.parent_server = None
@@ -76,6 +78,10 @@ class Client(threading.Thread):
                 break
             
             if self.quit_flag: break
+            
+            # NOCOPY hack
+            #if self.skip_offering_buffer:
+                #continue
             
             self.buff_sem.acquire()
             self.fbuff, self.bbuff = self.bbuff, self.fbuff

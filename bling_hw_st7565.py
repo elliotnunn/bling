@@ -7,6 +7,7 @@ class ST7575Server(bling_core.Server):
     def __init__(self):
         self.libbuff=ctypes.CDLL('buff/libbuff.so')
         self.libbuff.init()
+        self.libbuff.bklt(1)
     
     def add_client(self, client):
         self.client = client

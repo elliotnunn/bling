@@ -1,4 +1,6 @@
 import bling_core
+import bling_widgets
+import pygame
 import pygame.freetype
 import time
 import sys
@@ -18,36 +20,65 @@ class Compositor(bling_core.Client, bling_core.Server):
         
         # Ignore the above. It is now smarter.
         
-        first_to_draw = 0
-        for i in reversed(range(0, len(self.clients))):
+        client_count = len(self.clients)
+        topmost_obscurer = 0
+        # NOCOPY HACK [also check bling_core.Client.run()]
+        #self.skip_offering_buffer = False
+        
+        for i in reversed(range(0, client_count)):
             client_tuple = self.clients[i]
-            if client_tuple[1:3] == (0, 0):
-                if client_tuple[0].width == self.width and client_tuple[0].height == self.height:
-                    first_to_draw = i
+            xy_min = client_tuple[1:3]
+            if xy_min <= (0,0):
+                xy_max = (client_tuple[0].width, client_tuple[0].height) + xy_min
+                if xy_max >= (self.width, self.height):
+                    topmost_obscurer = i
                     break
-        if first_to_draw < len(self.clients) - 2: print("inefficient!")
         
-        for i in range(0, first_to_draw):
-            self.clients[i][0].server_allows_draw()
-        
-        for i in range(0, len(self.clients)):
+        for i in range(0, client_count):
             client_tuple = self.clients[i]
             client = client_tuple[0]
             
-            if i >= first_to_draw:
-                offset = client_tuple[1:3]
-                # Client may not swap buffers while we are blitting its front buffer!
-                buffer.blit(client.fbuff, offset)
+            # NOCOPY HACK: ugly, and doesn't actually make anything faster
+            # Requires that parent_server only ever ask for a frame async.
+            # If reenabling then change the below if to elif.
+            #if topmost_obscurer == client_count-1 == i:
+                ##print("Decided")
+                #self.buff_sem.acquire()
+                #client.buff_sem.acquire()
+                #(save_fbuff, self.fbuff) = (self.fbuff, client.fbuff)
+                #self.buff_sem.release()
+                ##print("Got buffers")
+                
+                ##print("Notifying server")
+                #self.parent_server.notify_client_dirty()
+                #self.sync_sem.acquire() # wait for server to consent but
+                #self.sync_sem.release() # don't snag again before next frame
+                ##print("Server acknowledged")
+                
+                #self.buff_sem.acquire()
+                #self.fbuff = save_fbuff
+                #client.buff_sem.release()
+                #self.buff_sem.release()
+                ##print("Put buffers back")
+                
+                #self.skip_offering_buffer = True
             
+            # Composite this buffer onto the back buffer
+            if i >= topmost_obscurer:
+                client.buff_sem.acquire()
+                buffer.blit(client.fbuff, client_tuple[1:3])
+                client.buff_sem.release()
+            
+            # Regardless of whether it is in view
             client.server_allows_draw()
-
+        
         self.client_list_lock.release()
         
         if nxt: return self.t
         else: return None
     
     # Should actually remove the following two methods; ugly duplication of FabCompositor
-    def add_client(self, client):
+    def add_client(self, client, **kwargs):
         self.client_list_lock.acquire()
         self.clients.append((client, 0, 0))
         self.client_list_lock.release()
@@ -59,7 +90,7 @@ class Compositor(bling_core.Client, bling_core.Server):
         try: self.evt_sem.release()
         except: pass
     
-    def remove_client(self, client):
+    def remove_client(self, client, **kwargs):
         self.client_list_lock.acquire()
         for i in reversed(range(0, len(self.clients))):
             if self.clients[i][0] == client:
@@ -83,7 +114,7 @@ class Compositor(bling_core.Client, bling_core.Server):
     
     def _setup(self, graf_props):
         self.clients = []
-        self.client_list_lock = threading.RLock()
+        self.client_list_lock = threading.Lock()
 
     
     def _event(self, event): # this is pretty ugly
@@ -188,145 +219,99 @@ class TimeTest(bling_core.Client):
         self.font.render_to(buffer, (0,0), "t = %dms"%pygame.time.get_ticks())
         
         return self.t + 500
-        
+
 
 class SexyMenu(bling_core.Client):
-    class MenuItemWidget:
-        def setup(self, text, font, width, height):
-            self.gap_ms = 4000
-            self.advance_px = 1
-            self.advance_ms = 90 # should be a multiple of the above
-            
-            self.text, self.width, self.height = text, width, height
-            
-            # Draw my label into a buffer
-            self.buff, rect = font.render(text, fgcolor=(0,0,0), bgcolor=(255,255,255))
-            self.txt_y = 10 - rect[1] # the origin!
-            self.txt_x = 2 + rect[0]
-            self.txt_w = rect[2]
-            
-            # Is the label too wide to display at once?
-            self.oflow = max(0, self.buff.get_width() - width)
-            self.oflow_scroll = 0
-            
-            self.selected = False
-            
-        def set_selected(self, selected, at_time):
-            self.selected = selected
-            if selected:
-                self.sel_t = self.gap_start_t = at_time
-                self.oflow_scroll = 0
-        
-        def draw(self, buffer, at_xy, t):
-            fg = (255,255,255) if self.selected else (0,0,0)
-            bg = (0,0,0) if self.selected else (255,255,255)
-            
-            rect = at_xy + (self.width, self.height)
-            buffer.fill(bg, rect)
-            buff_w, buff_h = self.buff.get_width(), self.buff.get_height()
-            widg_x, widg_y = at_xy
-            
-            txt_y = widg_y + self.txt_y
-            txt_x = widg_x + self.txt_x
-            
-            if self.oflow:
-                if self.selected:
-                    if t > self.gap_start_t + self.gap_ms: # out of gap
-                        in_gap = False
-                        self.oflow_scroll += self.advance_px
-                        
-                        if self.oflow_scroll >= self.txt_w: # back into gap
-                            in_gap = True
-                            self.gap_start_t = t
-                            self.oflow_scroll = 0
-                    else:
-                        in_gap = True
-                    
-                    if in_gap: nxt = self.gap_start_t + self.gap_ms
-                    else:      nxt = t + self.advance_ms
-                    
-                    src_x = self.oflow_scroll
-                                            
-                    src_w = buff_w - src_x
-                    dest_x = 0
-                    
-                    if src_w < self.width:
-                        draw_2 = True
-                        src2_x = 0
-                        src2_w = src_w - self.width
-                        dest2_x = src_w
-                    else:
-                        draw_2 = False
-                        src_w = self.width
-                    
-                    src_xywh = (src_x, 0, src_w, buff_h)
-                    dest_xy = (dest_x, txt_y)
-                    buffer.blit(self.buff, dest_xy, area=src_xywh)
-                    
-                    if draw_2:
-                        src2_xywh = (src2_x, 0, src2_w, buff_h)
-                        dest2_xy = (dest2_x, txt_y)
-                        buffer.blit(self.buff, dest2_xy, area=src2_xywh)
-                    
-                else: # draw with ellipses
-                    dest_xy = (0, txt_y)
-                    src_w = self.width - 11
-                    src_xywh = (0, 0, src_w, buff_h)
-                    buffer.blit(self.buff, dest_xy, area=src_xywh)
-                    
-                    # ellipses
-                    dot_y = txt_y + buff_h - 2 - 3
-                    for i in [1, 5, 9]:
-                        dot_x = src_w + i
-                        buffer.fill(fg, (dot_x, dot_y, 2, 2))
-                    
-                    nxt = sys.maxsize
-                        
-            else:
-                buffer.blit(self.buff, (txt_x, txt_y))
-                
-                nxt = sys.maxsize
-                # no animation
-            
-            return nxt
-    
-    def _setup(self, graf_props, items=["My name is Elliot Nunn.","Two","eight","acquire","stuff"]):
+    def _setup(self, graf_props, title="SexyMenu", items=["The quick brown fox jumps over the lazy dog"]*3+["aaa","bbb","ggg"]):
         self.font = pygame.freetype.Font("chicago.bdf")
+        self.font.origin = True
         
-        self.item_widgets = []
+        self.tb = bling_widgets.TextBox
+        
+        self.title = title
+        self.items = items
+        self.item_widgets = [None]*4
         for i in range(0,4):
-            w = self.MenuItemWidget()
-            w.setup(items[i], self.font, self.width, 13)
-            self.item_widgets.append(w)
+            self.item_widgets[i] = self.tb()
+            self.__setup_widget(i)
         
         self.selection = 0
-        self.item_widgets[self.selection].set_selected(True, self.t)
         self.scroll = 0
+        
+        self.lock = threading.Lock()
+    
+    def __setup_widget(self, i):
+        w = self.item_widgets[i % 4]
+        w.set_content(self.items[i], self.font, 0, (self.width, 13))
+    
+    def __reselect(self, by):
+        with self.lock:
+            self.selection += by
+            self.selection = min(self.selection, len(self.items)-1)
+            self.selection = max(self.selection, 0)
+            
+            if self.selection < self.scroll:
+                self.__scroll(-1)
+            elif self.selection >= self.scroll + 4:
+                self.__scroll(1)
+    
+    def __scroll(self, by):
+        if by == -1 and self.scroll > 0:
+            self.scroll += by
+            self.__setup_widget(self.scroll)
+        elif by == 1 and self.scroll + 4 < len(self.items):
+            self.scroll += by
+            self.__setup_widget(self.scroll + 3)
+    
     
     # This just straightforwardly wraps a few widgets
     def _draw_frame(self, buffer, is_initial):
-        nxt = sys.maxsize
+        if is_initial:
+            buffer.fill((255,255,255), (0, 0,  self.width, 12))
+            
+            w = bling_widgets.TextBox()
+            w.set_content(self.title.upper(), self.font, 0, (self.width, 13))
+            w.set_oflow(self.tb.OFLOW_ELLIPSIS)
+            
+            if w.ellipsis_x == 0:
+                x = (self.width - w.text_full_w) // 2
+            else:
+                x = 0
+            
+            w.draw(buffer, (x, -1), 0)
+            
+            buffer.fill((0,0,0), (0, 10, self.width, 1))
         
-        for i in range(self.scroll, 4):
-            widget = self.item_widgets[i % 4]
-            widget_nxt = widget.draw(buffer, (0, 13*(i-self.scroll)), self.t)
-            #if widget_nxt==None:
-                #widget_nxt = sys.maxsize
-                #print("   widget wants no frame")
-            #elif widget_nxt == self.t:
-                #print("   widget wants to draw right now")
-            #else:
-                #print("   widget wants to draw at %f" % widget_nxt)
-            nxt = min(nxt, widget_nxt)
+        with self.lock:
+            low_end = max(self.scroll + 4, len(self.item_widgets))
+            for i in range(self.scroll, low_end):
+                widget = self.item_widgets[i % 4]
+                
+                if i == self.selection:
+                    widget.set_hilite(True)
+                    widget.set_oflow(self.tb.OFLOW_SCROLL, self.t)
+                else:
+                    widget.set_hilite(False)
+                    widget.set_oflow(self.tb.OFLOW_ELLIPSIS)
+                
+                widget.draw(buffer, (0, 12+13*(i-self.scroll)), self.t)
         
-        if nxt==sys.maxsize: nxt = None
-        
-        return nxt
+        return None
+    
+    def _event(self, event):
+        if event == "up":
+            self.__reselect(-1)
+        elif event == "down":
+            self.__reselect(1)
+        else:
+            return None
+        return True
 
 class ProtoMenu(bling_core.Client): # a bit of a mess, and poorly optimised
     def _draw_frame(self, buffer, is_initial):
         blk = (0, 0, 0)
         wht = (255, 255, 255)
+        blk = (127, 127, 127)
         #blk, wht = wht, blk # cheeky
         
         # draw the title
@@ -364,7 +349,7 @@ class ProtoMenu(bling_core.Client): # a bit of a mess, and poorly optimised
             self.font.render_to(buffer, (1, y+10), text, fgcolor=tc, bgcolor=bc)
             
             if draw_arrow:
-                x = self.view_width - 8
+                x = self.view_width - 6
                 pygame.draw.line(buffer, tc, (x, y+4), (x+2, y+6), 2)
                 pygame.draw.line(buffer, tc, (x, y+8), (x+2, y+6), 2)
         
@@ -372,6 +357,8 @@ class ProtoMenu(bling_core.Client): # a bit of a mess, and poorly optimised
             pygame.draw.rect(buffer, wht,(self.view_width, self.titlearea_height, self.scrollbararea_width, self.view_height))
             pygame.draw.line(buffer, blk, (self.view_width + 1, self.titlearea_height - 1), (self.view_width + 1, self.height))
             pygame.draw.rect(buffer, blk, (self.view_width + 3, self.scrollbar_pos + self.titlearea_height, self.scrollbararea_width - 3, self.scrollbar_height))
+        
+        #return -1
     
     #def __init__(self, graf_props, items, title="untitled"):
     def _setup(self, graf_props, **kwargs):
@@ -398,7 +385,7 @@ class ProtoMenu(bling_core.Client): # a bit of a mess, and poorly optimised
             self.scrollbararea_width = 0
         else:
             self.scrollbar_visible = True
-            self.scrollbararea_width = 8
+            self.scrollbararea_width = 7
             self.scrollbar_height = max(10, self.view_height * self.view_height / self.content_height)
         
         self.view_width = self.view_width - self.scrollbararea_width
