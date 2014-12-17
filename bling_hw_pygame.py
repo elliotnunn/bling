@@ -28,20 +28,20 @@ class DesktopServer(bling_core.Server):
         self.screen.fill((127, 0, 127))        
         pygame.display.update()
  
-    def __del__(self):
+    def deinit(self):
         pygame.display.quit()
     
     def add_client(self, client):
         self.client = client
         client.parent_server = self
+        self.notify_client_dirty()
     
     def notify_client_dirty(self):
-        client = self.client
-        client.buffer_lock.acquire()
-        if self.scale_to_size:
-            cbs = pygame.transform.scale(client.get_buffer(True), self.scale_to_size)
-        else:
-            cbs = client.get_buffer(True)
-        self.screen.blit(cbs, (0, 0))
-        client.buffer_lock.release()
+        with self.client.buff_sem:
+            surf = self.client.fbuff
+            if self.scale_to_size:
+                surf = pygame.transform.scale(surf, self.scale_to_size)
+            self.screen.blit(surf, (0, 0))
+        
         pygame.display.flip()
+        self.client.server_allows_draw()

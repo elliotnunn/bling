@@ -118,6 +118,8 @@ class Compositor(bling_core.Client, bling_core.Server):
 
     
     def _event(self, event): # this is pretty ugly
+        if event == "back" and len(self.clients) == 1: event = "quit"
+        
         if event == "quit":
             self.client_list_lock.acquire()
             for client_tuple in self.clients:
@@ -222,90 +224,143 @@ class TimeTest(bling_core.Client):
 
 
 class SexyMenu(bling_core.Client):
-    def _setup(self, graf_props, title="SexyMenu", items=["The quick brown fox jumps over the lazy dog"]*3+["aaa","bbb","ggg"]):
+    @classmethod
+    def mkitem(cls, label, arrowed=False, handler=None, *args, **kwargs):
+        return (label, arrowed, handler, args, kwargs)
+        # this is the format for the tuples in self.items
+    
+    def _setup(self, graf_props, title="", menu_items=[], menu_isroot=False, **kwargs):
+        # boilerplate
         self.font = pygame.freetype.Font("chicago.bdf")
         self.font.origin = True
         
-        self.tb = bling_widgets.TextBox
+        # flesh these out a bit
+        self.title, self.items, self.isroot = title, menu_items, menu_isroot
         
-        self.title = title
-        self.items = items
-        self.item_widgets = [None]*4
-        for i in range(0,4):
-            self.item_widgets[i] = self.tb()
-            self.__setup_widget(i)
+        self.scrollbar_w = 0 if len(self.items) <= 4 else 7
         
-        self.selection = 0
-        self.scroll = 0
+        # the title is obvious
+        if self.isroot:
+            title_decor = bling_widgets.TextBox.DECOR_NONE
+        else:
+            title_decor = bling_widgets.TextBox.DECOR_LARROW
         
-        self.lock = threading.Lock()
-    
-    def __setup_widget(self, i):
-        w = self.item_widgets[i % 4]
-        w.set_content(self.items[i], self.font, 0, (self.width, 13))
-    
-    def __reselect(self, by):
-        with self.lock:
-            self.selection += by
-            self.selection = min(self.selection, len(self.items)-1)
-            self.selection = max(self.selection, 0)
+        self.title_widget = bling_widgets.TextBox(self.graf_props)
+        self.title_widget.set_content(self.title.upper(),
+                                      self.font,
+                                      title_decor,
+                                      (self.width, 13))
+        self.title_widget.set_oflow(bling_widgets.TextBox.OFLOW_ELLIPSIS)
+        self.title_widget.xy_in_parent = (0, -1)
+        
+        self.widgets.append(self.title_widget)
+        
+        # widgets for items, max of 4
+        self.item_widgets = []
+        for i in range(0, min(4, len(self.items))):
+            w = bling_widgets.TextBox(self.graf_props)
+            self.item_widgets.append(w)
+        self.widgets += self.item_widgets
+        
+        # do we need a scrollbar?
+        if self.scrollbar_w > 0:
+            scrollbar = bling_widgets.Scrollbar(self.graf_props)
+            scrollbar.set_size((self.scrollbar_w-3, self.height - 12))
+            scrollbar.set_position(0, 4, len(self.items))
+            scrollbar.xy_in_parent = (self.width - 4, 12)
             
-            if self.selection < self.scroll:
-                self.__scroll(-1)
-            elif self.selection >= self.scroll + 4:
-                self.__scroll(1)
+            self.widgets.append(scrollbar)
+            self.scrollbar_widget = scrollbar
+        
+        self._set_scroll(0)
+        self._set_selection(0)
     
-    def __scroll(self, by):
-        if by == -1 and self.scroll > 0:
-            self.scroll += by
-            self.__setup_widget(self.scroll)
-        elif by == 1 and self.scroll + 4 < len(self.items):
-            self.scroll += by
-            self.__setup_widget(self.scroll + 3)
+    def _set_selection(self, to):
+        if to < 0 or to >= len(self.items): return
+        self.selection = to
+        
+        if to < self.scroll:
+            self._set_scroll(to)
+        elif self.scroll + 3 < to:
+            self._set_scroll(to - 3)
+        
+        for i in range(self.scroll, min(len(self.items), self.scroll+4)):
+            sel = i == self.selection
+            wgt = self.item_widgets[i % 4]
+            
+            if sel:
+                oflow = bling_widgets.TextBox.OFLOW_SCROLL
+            else:
+                oflow = bling_widgets.TextBox.OFLOW_ELLIPSIS
+                
+            wgt.set_hilite(sel)
+            wgt.set_oflow(oflow, self.t)
     
+    def _set_scroll(self, to):
+        if not hasattr(self, "scroll"): self.scroll = None
+        frm, self.scroll = self.scroll, to
+        
+        if self.scrollbar_w > 0:
+            self.scrollbar_widget.set_position(to, 4, len(self.items))
+        
+        if frm == None: # first call, scroll to zero
+            newly_shown = range(0, 4)
+        elif to == frm + 1: # scroll one step down
+            newly_shown = [frm + 4]
+        elif to == frm - 1: # scroll one step upp
+            newly_shown = [to]
+        else:
+            newly_shown = []
+        
+        for i in range(to, min(len(self.items), self.scroll+4)):
+            wgt = self.item_widgets[i % 4]
+            
+            y = 12 + 13 * (i - to)
+            wgt.xy_in_parent = (0, y)
+            
+            if i in newly_shown:
+                itm = self.items[i]
+                wh = (self.width - self.scrollbar_w, 13)
+                if itm[1]: # arrowed?
+                    decor = bling_widgets.TextBox.DECOR_RARROW
+                else:
+                    decor = bling_widgets.TextBox.DECOR_NONE 
+                
+                wgt.set_content(itm[0], self.font, decor, wh)
     
     # This just straightforwardly wraps a few widgets
-    def _draw_frame(self, buffer, is_initial):
-        if is_initial:
-            buffer.fill((255,255,255), (0, 0,  self.width, 12))
-            
-            w = bling_widgets.TextBox()
-            w.set_content(self.title.upper(), self.font, 0, (self.width, 13))
-            w.set_oflow(self.tb.OFLOW_ELLIPSIS)
-            
-            if w.ellipsis_x == 0:
-                x = (self.width - w.text_full_w) // 2
-            else:
-                x = 0
-            
-            w.draw(buffer, (x, -1), 0)
-            
-            buffer.fill((0,0,0), (0, 10, self.width, 1))
+    def _draw_frame(self, surf, first):
+        if first: surf.fill((255,255,255))
         
-        with self.lock:
-            low_end = max(self.scroll + 4, len(self.item_widgets))
-            for i in range(self.scroll, low_end):
-                widget = self.item_widgets[i % 4]
-                
-                if i == self.selection:
-                    widget.set_hilite(True)
-                    widget.set_oflow(self.tb.OFLOW_SCROLL, self.t)
-                else:
-                    widget.set_hilite(False)
-                    widget.set_oflow(self.tb.OFLOW_ELLIPSIS)
-                
-                widget.draw(buffer, (0, 12+13*(i-self.scroll)), self.t)
+        self._draw_widgets(surf)
         
-        return None
+        # Horizontal divider under title
+        surf.fill((0,0,0), (0, 10, self.width, 1))
+        
+        # Vertical divider left of the scrollber, if any
+        if self.scrollbar_w > 0:
+                x = self.width - self.scrollbar_w + 1
+                surf.fill((0,0,0), (x, 10, 1, self.height - 10))
     
     def _event(self, event):
-        if event == "up":
-            self.__reselect(-1)
-        elif event == "down":
-            self.__reselect(1)
-        else:
-            return None
-        return True
+        scroll_events = {"up": -1, "down": 1}
+        if event in scroll_events:
+            delta = scroll_events[event]
+            
+            with self.big_lock:
+                self._set_selection(self.selection + delta)
+            
+            return True
+        
+        if event == "ok":
+            with self.big_lock:
+                label, arrow, handler, args, kwargs = self.items[self.selection]
+            
+            if hasattr(handler, "get_buffer"): # quacks like a Client
+                new_client = handler(self.graf_props, *args, **kwargs)
+                self.parent_server.add_client(new_client)
+            else: # handler is presumably a function
+                handler(*args, **kwargs) # easy as that
 
 class ProtoMenu(bling_core.Client): # a bit of a mess, and poorly optimised
     def _draw_frame(self, buffer, is_initial):

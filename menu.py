@@ -10,48 +10,22 @@ import os
 import sys
 #import mpd
 
-class MainMenu(bling_uikit.ProtoMenu):
-    def _setup(self, graf_props):
+class MainMenu(bling_uikit.SexyMenu):
+    def _setup(self, graf_props, **kwargs):
+        menu_items = [
+            self.mkitem("Frame Timing Test", True, bling_misc.RapidFire),
+            self.mkitem("Timing Precision Test", True, bling_uikit.TimeTest),
+            self.mkitem("Picture", True, bling_misc.PrettyPicture, file="pics/happy_clock.BMP"),
+            self.mkitem("Exception Handling Test", True, bling_misc.CrashMenu),
+            self.mkitem("Alarms", True, menus_alarms.AlarmsMenu),
+        ]
         
-        items = []
+        kwargs["title"] = "Zeitgeber"
+        kwargs["menu_isroot"] = True
+        kwargs["menu_items"] = menu_items
         
-        import string
-        import random
-        chars = string.ascii_uppercase + string.ascii_lowercase + string.digits
-        
-        sml = []
-        for i in range(10):
-            it = "".join(random.SystemRandom().choice(chars) for _ in range(30))
-            sml.append(it)
-        
-        def spawn_sexy_menu(server): server.add_client(bling_uikit.SexyMenu(graf_props, items=sml))
-        items.append(("SexyMenu>", spawn_sexy_menu))
-        
-        def spawn_rapidfire(server): server.add_client(bling_misc.RapidFire(graf_props))
-        items.append(("RapidFire>", spawn_rapidfire))
-        
-        def spawn_picture_menu(server): server.add_client(bling_misc.PrettyPicture(graf_props, file="pics/happy_clock.BMP"))
-        items.append(("Picture>", spawn_picture_menu))
-        
-        def spawn_crash_menu(server): server.add_client(bling_misc.CrashMenu(graf_props))
-        items.append(("Crash>", spawn_crash_menu))
-        
-        #def spawn_artists_menu(server): server.add_client(menus_music.ArtistsMenu(graf_props))
-        #items.append(("Artists>", spawn_artists_menu))
-        
-        def spawn_alarms_menu(server): server.add_client(menus_alarms.AlarmsMenu(graf_props))
-        items.append(("Alarms>", spawn_alarms_menu))
-        
-        def spawn_tt(server): server.add_client(bling_uikit.TimeTest(graf_props))
-        items.append(("Time test>", spawn_tt))
-
-        
-        bling_uikit.ProtoMenu._setup(self, graf_props, items=items, title="Zeitgeber")
+        bling_uikit.SexyMenu._setup(self, graf_props, **kwargs)
     
-    def _event(self, event):
-        if event == "back": return False
-        else: return bling_uikit.ProtoMenu._event(self, event)
-
 
 menus_alarms.alarm_backend = menus_alarms.AlarmBackend()
 
@@ -76,6 +50,8 @@ if envt == "rpi":
 elif envt == "desktop":
     import bling_hw_pygame
     import bling_hw_terminal
+    
+    pygame.init()
     
     hw_server = bling_hw_pygame.DesktopServer(graf_props, scale_to_size=(128*4, 64*5))
     input_server = bling_hw_terminal.StdinServer()

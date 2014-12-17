@@ -12,6 +12,7 @@ import sys
 class Client(threading.Thread):
     def __init__(self, graf_props, **kwargs):
         threading.Thread.__init__(self)
+        self.graf_props = graf_props
         self.width, self.height, self.depth, self.palette = graf_props
         
         self.quit_flag = False
@@ -34,6 +35,10 @@ class Client(threading.Thread):
         self.evt_sem.acquire()
         self.sync_sem.acquire()
         
+        self.big_lock = threading.Lock()
+        
+        self.widgets = []
+        
         (self.t, self.nxt) = (pygame.time.get_ticks(), None)
         
         try:
@@ -43,8 +48,11 @@ class Client(threading.Thread):
             return
         
         # Initial frame gets drawn synchronously (NOT from thread)
+        self.nxt = sys.maxsize
+        
         try:
-            self.nxt = self._draw_frame(buffer=self.fbuff, is_initial=True)
+            nxt = self._draw_frame(self.fbuff, True)
+            if nxt != None: self.nxt = min(self.nxt, nxt)
         except:
             self.__bail("while drawing its initial frame")
             return
@@ -55,7 +63,7 @@ class Client(threading.Thread):
     def run(self): 
         while True:
             # first must not draw frame before app demands
-            if self.nxt == sys.maxsize or self.nxt == None:
+            if self.nxt == sys.maxsize:
                 self.evt_sem.acquire() # wait indef until sem released
             else:
                 timeout_ms = self.nxt - pygame.time.get_ticks()
@@ -70,9 +78,13 @@ class Client(threading.Thread):
             if self.quit_flag: break
             
             # at this point we are committed to drawing a frame without delay
+            self.nxt = sys.maxsize
+            
             try:
                 self.t = pygame.time.get_ticks() # update canonical frame time
-                self.nxt = self._draw_frame(buffer=self.bbuff, is_initial=False)
+                with self.big_lock:
+                    nxt = self._draw_frame(self.bbuff, False)
+                if nxt != None: self.nxt = min(self.nxt, nxt)
             except:
                 self.__bail("while drawing a frame")
                 break
@@ -161,9 +173,17 @@ class Client(threading.Thread):
     # frame. Special values:
     #                        sys.maxsize or None                  indefinitely
     #                        current or past time (e.g. self.t)   immediately
-    # 
-    def _draw_frame(self, buffer=None, is_initial=False):
-        pass
+    def _draw_frame(self, surf, first):
+        surf.fill((255,255,255))
+        self._draw_widgets(surf)
+    
+    def _draw_widgets(self, surf=None, which=None):
+        if surf == None: surf = self.bbuff # potentially dangerous
+        if which == None: which = self.widgets
+        if not hasattr(which, "__iter__"): which = [which]
+        for w in which:
+            nxt = w.draw(surf, w.xy_in_parent, self.t)
+            if nxt != None: self.nxt = min(self.nxt, nxt)
 
 class Server:
     def notify_client_dirty(self):
