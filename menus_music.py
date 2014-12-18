@@ -2,54 +2,55 @@ import bling_uikit
 
 global mpd_client
 
-class ArtistsMenu(bling_uikit.ProtoMenu):
-    def _setup(self, graf_props):
-        artists = [None] + mpd_client.list("ARTIST")
-        print(str(len(artists)))
-        items = []
+class ArtistsMenu(bling_uikit.SexyMenu):
+    def _setup(self, graf_props, **kwargs):
+        menu_items = []
         
-        # This reminds me of the infamous RequestProcessorFactoryFactory.
-        # Did I mention that Python closures suck?
-        def create_menuspawner_for_artist(artist): # aka artist_albums_menuspawner_factory
-            def menuspawner(server): # aka artist_albums_menu_factory
-                server.add_client(ArtistAlbumsMenu(artist=artist, graf_props=graf_props))
-            return menuspawner
+        for artist in [None] + mpd_client.list("ARTIST"):
+            str = artist
+            if str == None: str = "(All)"
+            
+            menu_items.append(self.mkitem(str, True, AlbumsMenu, artist=artist))
         
-        for artist in artists:
-            spawn_artist_albums_menu = create_menuspawner_for_artist(artist)
-            if artist == None: artist = "*See all albums"
-            items.append((artist + ">", spawn_artist_albums_menu))
+        kwargs["title"] = "Artists"
+        kwargs["menu_items"] = menu_items
         
-        ProtoMenu._setup(self, graf_props, items=items, title="Artists")
+        bling_uikit.SexyMenu._setup(self, graf_props, **kwargs)
 
-class ArtistAlbumsMenu(bling_uikit.ProtoMenu):
-    def _setup(self, graf_props, artist=None):
+class AlbumsMenu(bling_uikit.SexyMenu):
+    def _setup(self, graf_props, artist=None, **kwargs):
         if artist == None:
             albums = mpd_client.list("ALBUM")
         else:
             albums = mpd_client.list("ALBUM", artist)
-        items = []
         
-        # always remember that what we are doing is preparing instructions to be
-        # executed when any item in this menu is selected
-        
-        def create_menuspawner_for_album(artist, album): # aka artist_albums_menuspawner_factory
-            def menuspawner(server): # aka artist_albums_menu_factory
-                server.add_client(AlbumSongsMenu(artist=artist, album=album, graf_props=graf_props))
-            return menuspawner
+        menu_items = []
         
         for album in albums:
-            menuspawner = create_menuspawner_for_album(artist, album)
-            items.append((album + ">", menuspawner))
+            menu_items.append(self.mkitem(album, True, SongsMenu, artist=artist, album=album))
         
-        if artist == None:
-            title = "All albums"
+        kwargs["title"] = artist
+        kwargs["menu_items"] = menu_items
+        
+        bling_uikit.SexyMenu._setup(self, graf_props, **kwargs)
+        
+class SongsMenu(bling_uikit.SexyMenu):
+    def _setup(self, graf_props, artist=None, album=None, **kwargs):
+        if artist != None:
+            songs = mpd_client.find("ARTIST", artist, "ALBUM", album)
         else:
-            title = artist
+            songs = mpd_client.find("ALBUM", album)
         
-        ProtoMenu._setup(self, graf_props, items=items, title=title)
+        menu_items = []
+        
+        menu_items = [self.mkitem(song["title"], True, PlayMenuX, path=song["file"]) for song in songs]
+        
+        kwargs["title"] = album
+        kwargs["menu_items"] = menu_items
+        
+        bling_uikit.SexyMenu._setup(self, graf_props, **kwargs)
 
-class AlbumSongsMenu(bling_uikit.ProtoMenu):
+class SongsMenuX(bling_uikit.ProtoMenu):
     def _setup(self, graf_props, artist=None, album=None):
         if artist != None:
             songs = mpd_client.find("ARTIST", artist, "ALBUM", album)
@@ -78,10 +79,46 @@ class AlbumSongsMenu(bling_uikit.ProtoMenu):
             title = song["title"]
             items.append((title, menuspawner))
         
-        ProtoMenu._setup(self, graf_props, items=items, title=album)
+        bling_uikit.ProtoMenu._setup(self, graf_props, items=items, title=album)
+
+class PlayMenu(bling_uikit.SexyMenu):
+    def _setup(self, graf_props, file=None, **kwargs):
+        mpd_status = mpd_client.status()
+
+        queue_pos = int(mpd_status["playlistlength"])
+        mpd_state = mpd_status["state"] != "stop"
         
-class SongSelectedMenu(bling_uikit.ProtoMenu):
-    def _setup(self, graf_props, canqueue=False, file=None):
+        menu_items = []
+
+        def play_next():
+            mpd_client.addid(file, 0)
+
+        #menu_items.append(self.mkitem("Play next", False, play_next))
+
+        if queue_pos > 1 or mpd_state != "stop":
+            if mpd_state == "stop": queue_pos += 1
+            
+            def enqueue():
+                mpd_client.add(file)
+                mpd_client.play()
+
+            menu_items.append(self.mkitem("Enqueue (#%d)" % queue_pos, False, enqueue))
+        
+        def play_now():
+            mpd_client.clear()
+            mpd_client.add(file)
+            mpd_client.play(0)
+
+        menu_items.append(self.mkitem("Play now", False, play_now))
+                
+        kwargs["title"] = "Play song..."
+        kwargs["menu_items"] = menu_items
+        
+        bling_uikit.SexyMenu._setup(self, graf_props, **kwargs)
+
+class PlayMenuX(bling_uikit.ProtoMenu):
+    def _setup(self, graf_props, canqueue=True, path=None):
+        file = path
         items = []
                 
         # def play_next(server):
@@ -109,4 +146,4 @@ class SongSelectedMenu(bling_uikit.ProtoMenu):
             server.remove_client(self)
         items.append(("Play now", play_now))
         
-        ProtoMenu._setup(self, graf_props, items=items, title="Play song…")
+        bling_uikit.ProtoMenu._setup(self, graf_props, items=items, title="Play song…")

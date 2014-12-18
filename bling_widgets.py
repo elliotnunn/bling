@@ -210,7 +210,7 @@ class TextBox(Widget):
             clear_w = self.max_text_disp_w - self.ellipsis_x
             clear_x = dest_x + dest_w - self.text_margin_r - clear_w
             
-            surf.fill(self.bgc, rect=(clear_x, dest_y, clear_w, dest_h))
+            #surf.fill(self.bgc, rect=(clear_x, dest_y, clear_w, dest_h))
             
             x = dest_x + self.text_margin_l + self.ellipsis_x
             for i in range(3):

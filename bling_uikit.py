@@ -118,8 +118,6 @@ class Compositor(bling_core.Client, bling_core.Server):
 
     
     def _event(self, event): # this is pretty ugly
-        if event == "back" and len(self.clients) == 1: event = "quit"
-        
         if event == "quit":
             self.client_list_lock.acquire()
             for client_tuple in self.clients:
@@ -183,7 +181,7 @@ class FabCompositor(Compositor):
                     elif direction == 1: # sliding in from the right
                         x = self.width - progress
                         
-                    self.clients[i] = (client, x, x/5, animation)
+                    self.clients[i] = (client, x, 0, animation)
                     
                     animating = True
         
@@ -237,7 +235,7 @@ class SexyMenu(bling_core.Client):
         # flesh these out a bit
         self.title, self.items, self.isroot = title, menu_items, menu_isroot
         
-        self.scrollbar_w = 0 if len(self.items) <= 4 else 7
+        self.scrollbar_w = 0 #if len(self.items) <= 4 else 7
         
         # the title is obvious
         if self.isroot:
@@ -361,6 +359,11 @@ class SexyMenu(bling_core.Client):
                 self.parent_server.add_client(new_client)
             else: # handler is presumably a function
                 handler(*args, **kwargs) # easy as that
+            
+            return False
+        
+        if event == "back" and self.isroot:
+            return False
 
 class ProtoMenu(bling_core.Client): # a bit of a mess, and poorly optimised
     def _draw_frame(self, buffer, is_initial):
