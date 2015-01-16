@@ -1,25 +1,11 @@
+import sys
+sys.path.insert(0, "../")
+
 import pygame
-import bling_core
-import bling_uikit
+import core
+import ui
 
-class Clock(bling_core.Client):
-    def _setup(self, graf_props):
-        self.count = 0
-        self.font = pygame.font.SysFont("chicagoflf", 12)
-        
-        self.bg = (0, 0, 0); self.fg = (255, 255, 255);
-        
-        self.dirty.set()
-    
-    def _draw_frame(self, buffer, is_initial):
-        buffer.fill(self.bg)
-        
-        newsurf = self.font.render("FrmCt=" + str(self.count), False, self.fg, self.bg)
-        buffer.blit(newsurf, (2, 2))
-        
-        self.count += 1
-
-class RapidFire(bling_core.Client):
+class RapidFire(core.Client):
     def _setup(self, graf_props):
         self.ifdel = 0
         self.lastfire = self.t
