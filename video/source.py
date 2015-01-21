@@ -1,15 +1,11 @@
-#!/usr/bin/env python2
-
-import threading
 import pygame
+import threading
 import time
-import random
-import ctypes
 import traceback
 import sys
 
 
-class Client(threading.Thread):
+class Source(threading.Thread):
     def __init__(self, graf_props, **kwargs):
         threading.Thread.__init__(self)
         self.graf_props = graf_props
@@ -184,18 +180,3 @@ class Client(threading.Thread):
         for w in which:
             nxt = w.draw(surf, w.xy_in_parent, self.t)
             if nxt != None: self.nxt = min(self.nxt, nxt)
-
-class Server:
-    def notify_client_dirty(self):
-        pass
-    def add_client(self, client):
-        pass
-    def remove_client(self, client):
-        pass
-    def __init__(self):
-        pass
-
-
-class InputServer:
-    def add_client(self, client):
-        pass

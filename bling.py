@@ -1,43 +1,15 @@
-#!/usr/bin/env python3
-# coding=utf-8
-
 import pygame
-import bling_uikit
-import menus_music
-import menus_alarms
-import bling_misc
 import os
 import sys
-#import mpd
+import getopt
+import importlib
 
-class DiagnosticsMenu(bling_uikit.SexyMenu):
-    def _setup(self, graf_props, **kwargs):
-        menu_items = [
-            self.mkitem("Frame timing", True, bling_misc.RapidFire),
-            self.mkitem("Exception handling", True, bling_misc.CrashMenu),
-            self.mkitem("Pygame time", True, bling_uikit.TimeTest),
-        ]
-        
-        kwargs["title"] = "Diagnostics"
-        kwargs["menu_items"] = menu_items
-        
-        bling_uikit.SexyMenu._setup(self, graf_props, **kwargs)
+# Put THIS DIRECTORY ("bling/") in sys.path
 
-class MainMenu(bling_uikit.SexyMenu):
-    def _setup(self, graf_props, **kwargs):
-        menu_items = [
-            self.mkitem("Music", True, print, "First positional argument of print!"),
-            self.mkitem("Alarm settings", True, menus_alarms.AlarmsMenu),
-            self.mkitem("About", True, DiagnosticsMenu),
-            self.mkitem("Backlight", True, print, "First positional argument of print!"),
-        ]
-        
-        kwargs["title"] = "Zeitgeber"
-        kwargs["menu_isroot"] = True
-        kwargs["menu_items"] = menu_items
-        
-        bling_uikit.SexyMenu._setup(self, graf_props, **kwargs)
+i
 
+# Parse sys.argv to determine which UI, INPUT SERVER and OUTPUT SERVER to use.
+# Fire up both those servers then pass control to 
 
 menus_alarms.alarm_backend = menus_alarms.AlarmBackend()
 
