@@ -1,63 +1,95 @@
+#!/usr/bin/env python3
+
+# This file is part of bling.
+
+# Bling is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# Bling is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with Bling.  If not, see <http://www.gnu.org/licenses/>.
+
+
 import pygame
+import pygame.freetype
+# Submodules init'ed before gui/*.py is called:
+# display, freetype
+
 import os
 import sys
-import getopt
-import importlib
+from importlib import import_module
 
-# Put THIS DIRECTORY ("bling/") in sys.path
 
-i
+#
+# Set up imports so that all modules can import from the root
+#
+bling_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, bling_root)
 
-# Parse sys.argv to determine which UI, INPUT SERVER and OUTPUT SERVER to use.
-# Fire up both those servers then pass control to 
 
-menus_alarms.alarm_backend = menus_alarms.AlarmBackend()
+#
+# Parse options (which thankfully are actually optional)
+#
+from optparse import OptionParser
 
-if len(sys.argv) == 1:
-    envt = "rpi"
-else:
-    envt = sys.argv[1]
+parser = OptionParser(usage="usage: %prog [--gui=<gui>] [--hw=<hw> ...]",
+                      version="bling, not finished yet")
+parser.add_option("--gui", action="store",  type="string", dest="gui",
+                  help="GUI to show (gui/*.py), e.g. clock")
+parser.add_option("--hw",  action="append", type="string", dest="hw",
+                  help="import driver (module.class), e.g. st7565.ST7565")
 
-palette = tuple([(i, i, i) for i in range(0, 255)])
-graf_props = (128, 64, 8, palette)
+(options, args) = parser.parse_args()
 
-if envt == "rpi":
-    import bling_hw_st7565
-    import bling_hw_terminal
+if len(args) > 0:
+    parser.error("Error: too many arguments")
+    exit(1)
+
+
+#
+# Get a list of Sink classes and initialise them
+#
+hw = options.hw or ["st7565.ST7565", "terminal.TermIn"]
+
+sinks = []
+for hw_name in hw:
+    parts = ["hw"] + hw_name.split(".")
     
+    hw_modname = ".".join(parts[:-1])
+    hw_classname = parts[-1]
+    
+    mod = import_module(hw_modname)
+    cls = getattr(mod, hw_classname)
+    
+    sink = cls()
+    sinks.append(sink)
+
+# We need to initialise a display, so if none of our sinks have done it...
+if not pygame.display.get_init():
     os.putenv("SDL_VIDEODRIVER", "dummy")
-    pygame.init()
-    pygame.display.set_mode((1,1), pygame.NOFRAME)
-    
-    hw_server = bling_hw_st7565.ST7575Server()
-    input_server = bling_hw_terminal.StdinServer()
-elif envt == "desktop":
-    import bling_hw_pygame
-    import bling_hw_terminal
-    
-    pygame.init()
-    
-    hw_server = bling_hw_pygame.DesktopServer(graf_props, scale_to_size=(128*4, 64*5))
-    input_server = bling_hw_terminal.StdinServer()
+    pygame.display.init()
+    pygame.display.set_mode((1, 1))
 
-#menus_music.mpd_client = mpd.MPDClient()
-#menus_music.mpd_client.timeout = 10
-#menus_music.mpd_client.idletimeout = None
-#menus_music.mpd_client.connect("127.0.0.1", 6600)
+# And we always need freetype
+pygame.freetype.init()
 
-compositor = bling_uikit.FabCompositor(graf_props)
-hw_server.add_client(compositor)
-input_server.add_client(compositor)
 
-main_menu = MainMenu(graf_props)
-compositor.add_client(main_menu, anim_duration_ms=0 )
-print("You should now see a UI.")
+#
+# Get our "orchestrator" ready to go
+#
+gui = options.gui or "debug"
+gui_module = import_module("gui." + gui)
 
-compositor.join() # block until compositor exits
 
-hw_server.deinit()
-print("I have exited cleanly.")
+#
+# Go
+#
+gui_module.go(sinks)
 
-# Ignore the really old comment below.
-# cutting out the compositor decreases frame-time by 1.6ms, from 15.1ms to 13.5ms
-# text drawing seems to be really slow, but blitting is fast!
+pygame.quit()

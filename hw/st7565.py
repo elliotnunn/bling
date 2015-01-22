@@ -13,28 +13,38 @@
 # You should have received a copy of the GNU General Public License
 # along with Bling.  If not, see <http://www.gnu.org/licenses/>.
 
-import pygame
-import bling_core
-import ctypes
-import time
 
-class ST7575Server(bling_core.Server):
+from video.sink import Sink
+
+import os.path
+import ctypes
+
+
+class ST7565(Sink):
     def __init__(self):
-        self.libbuff=ctypes.CDLL('buff/libbuff.so')
+        Sink.__init__(self)
+        
+        my_dir = os.path.dirname(os.path.abspath(__file__))
+        lib_path = os.path.join(my_dir, "st7565/libbuff.so")
+        self.libbuff = ctypes.CDLL(lib_path)
+        
         self.libbuff.init()
         self.libbuff.bklt(1)
     
     def add_client(self, client):
+        self.libbuff.init()
+        self.libbuff.bklt(1)
+        
         self.client = client
         client.parent_server = self
+        
         self.notify_client_dirty()
     
     def notify_client_dirty(self):
-        self.client.buff_sem.acquire()
-        self.libbuff.fling_buffer(self.client.fbuff._pixels_address)
-        self.client.buff_sem.release()
-        #pygame.time.wait(150)
+        with self.client.buff_sem:
+            self.libbuff.fling_buffer(self.client.fbuff._pixels_address)
+        
         self.client.server_allows_draw()
     
-    def deinit(self):
+    def remove_client(self, client):
         self.libbuff.deinit()

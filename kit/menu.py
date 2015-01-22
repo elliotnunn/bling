@@ -16,13 +16,13 @@
 import pygame
 import pygame.freetype
 
-from core import Client
-from ui.widget import TextBox, Scrollbar
+from video.source import Source
+from kit.widget import TextBox, Scrollbar
 
 
-class SexyMenu(Client):
+class SexyMenu(Source):
     @classmethod
-    def mkitem(cls, label, arrowed=False, handler=None, *args, **kwargs):
+    def itm(cls, label, arrowed=False, handler=None, *args, **kwargs):
         return (label, arrowed, handler, args, kwargs)
         # this is the format for the tuples in self.items
     
@@ -38,16 +38,16 @@ class SexyMenu(Client):
         
         # the title is obvious
         if self.isroot:
-            title_decor = bling_widgets.TextBox.DECOR_NONE
+            title_decor = TextBox.DECOR_NONE
         else:
-            title_decor = bling_widgets.TextBox.DECOR_LARROW
+            title_decor = TextBox.DECOR_LARROW
         
-        self.title_widget = bling_widgets.TextBox(self.graf_props)
+        self.title_widget = TextBox(self.graf_props)
         self.title_widget.set_content(self.title.upper(),
                                       self.font,
                                       title_decor,
                                       (self.width, 13))
-        self.title_widget.set_oflow(bling_widgets.TextBox.OFLOW_ELLIPSIS)
+        self.title_widget.set_oflow(TextBox.OFLOW_ELLIPSIS)
         self.title_widget.xy_in_parent = (0, -1)
         
         self.widgets.append(self.title_widget)
@@ -55,13 +55,13 @@ class SexyMenu(Client):
         # widgets for items, max of 4
         self.item_widgets = []
         for i in range(0, min(4, len(self.items))):
-            w = bling_widgets.TextBox(self.graf_props)
+            w = TextBox(self.graf_props)
             self.item_widgets.append(w)
         self.widgets += self.item_widgets
         
         # do we need a scrollbar?
         if self.scrollbar_w > 0:
-            scrollbar = bling_widgets.Scrollbar(self.graf_props)
+            scrollbar = Scrollbar(self.graf_props)
             scrollbar.set_size((self.scrollbar_w-3, self.height - 12))
             scrollbar.set_position(0, 4, len(self.items))
             scrollbar.xy_in_parent = (self.width - 4, 12)
@@ -86,9 +86,9 @@ class SexyMenu(Client):
             wgt = self.item_widgets[i % 4]
             
             if sel:
-                oflow = bling_widgets.TextBox.OFLOW_SCROLL
+                oflow = TextBox.OFLOW_SCROLL
             else:
-                oflow = bling_widgets.TextBox.OFLOW_ELLIPSIS
+                oflow = TextBox.OFLOW_ELLIPSIS
                 
             wgt.set_hilite(sel)
             wgt.set_oflow(oflow, self.t)
@@ -119,9 +119,9 @@ class SexyMenu(Client):
                 itm = self.items[i]
                 wh = (self.width - self.scrollbar_w, 13)
                 if itm[1]: # arrowed?
-                    decor = bling_widgets.TextBox.DECOR_RARROW
+                    decor = TextBox.DECOR_RARROW
                 else:
-                    decor = bling_widgets.TextBox.DECOR_NONE 
+                    decor = TextBox.DECOR_NONE 
                 
                 wgt.set_content(itm[0], self.font, decor, wh)
     
@@ -165,7 +165,7 @@ class SexyMenu(Client):
             return False
 
 # Museum piece predating widget classes. Use SexyMenu instead.
-class ProtoMenu(Client): # a bit of a mess, and poorly optimised
+class ProtoMenu(Source): # a bit of a mess, and poorly optimised
     def _draw_frame(self, buffer, is_initial):
         blk = (0, 0, 0)
         wht = (255, 255, 255)
@@ -252,9 +252,7 @@ class ProtoMenu(Client): # a bit of a mess, and poorly optimised
         self.scroll = 0
         self.selected = 0
         self.scrollbar_pos = 0
-        
-        #Client.__init__(self, graf_props)
-        
+    
     def _event(self, event):
         if event == "back":
             self.parent_server.remove_client(self)

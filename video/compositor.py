@@ -13,13 +13,16 @@
 # You should have received a copy of the GNU General Public License
 # along with Bling.  If not, see <http://www.gnu.org/licenses/>.
 
+
 import pygame
-import pygame.freetype
-from core import Client, Server
+from video.sink import Sink
+from video.source import Source
+
 import time
 import threading
 
-class Compositor(Client, Server):
+
+class Compositor(Sink, Source):
     def pre_frame(self): pass
     
     def _draw_frame(self, buffer, is_initial):
@@ -122,8 +125,8 @@ class Compositor(Client, Server):
         except: pass
     
     def __init__(self, graf_props):
-        bling_core.Client.__init__(self, graf_props)
-        bling_core.Server.__init__(self)
+        Source.__init__(self, graf_props)
+        Sink.__init__(self)
     
     def _setup(self, graf_props):
         self.clients = []
@@ -136,6 +139,8 @@ class Compositor(Client, Server):
             for client_tuple in self.clients:
                 client_tuple[0].event("quit")
             self.client_list_lock.release()
+            
+            self.parent_server and self.parent_server.remove_client(self)
             
             self.quit_flag = True
             return True

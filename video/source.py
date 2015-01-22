@@ -13,16 +13,18 @@
 # You should have received a copy of the GNU General Public License
 # along with Bling.  If not, see <http://www.gnu.org/licenses/>.
 
+
 import pygame
-import threading
+
+from threading import Thread, Lock
 import time
 import traceback
 import sys
 
 
-class Source(threading.Thread):
+class Source(Thread):
     def __init__(self, graf_props, **kwargs):
-        threading.Thread.__init__(self)
+        Thread.__init__(self)
         self.graf_props = graf_props
         self.width, self.height, self.depth, self.palette = graf_props
         
@@ -40,13 +42,13 @@ class Source(threading.Thread):
         # start life as an orphan
         self.parent_server = None
         
-        self.evt_sem = threading.Lock()  # These act as semaphores, having
-        self.sync_sem = threading.Lock() # no concept of an owning thread.
-        self.buff_sem = threading.Lock()
+        self.evt_sem = Lock()  # These act as semaphores, having
+        self.sync_sem = Lock() # no concept of an owning thread.
+        self.buff_sem = Lock()
         self.evt_sem.acquire()
         self.sync_sem.acquire()
         
-        self.big_lock = threading.Lock()
+        self.big_lock = Lock()
         
         self.widgets = []
         
@@ -128,7 +130,7 @@ class Source(threading.Thread):
                 return
             
             if release_evt_sem == None: # Handler deferred to default handler
-                release_evt_sem = Client._event(self, event)
+                release_evt_sem = Source._event(self, event)
             
             if release_evt_sem == True: # Handler asks for new frame
                 try: self.evt_sem.release()
@@ -139,7 +141,7 @@ class Source(threading.Thread):
                 except: pass
             
         elif self.have_bailed: # The default handler won't crash
-            Client._event(self, event) # and we don't care what it returns
+            Source._event(self, event) # and we don't care what it returns
     
     def server_allows_draw(self):
         try: self.sync_sem.release()
@@ -149,7 +151,7 @@ class Source(threading.Thread):
     # presumably overridden, throws an exception. Makes it possible to
     # close the client using the basic _event handler.
     def __bail(self, happened_while):
-        print("Oh, pickle; a Client spat the dummy %s." % happened_while)
+        print("Oh, pickle; a Source spat the dummy %s." % happened_while)
         traceback.print_exc(5)
         
         self.quit_flag = self.have_bailed = True
