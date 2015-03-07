@@ -41,10 +41,10 @@ int main(int argc, char **argv);
 #define send_byte(byte)                                                        \
 for (int which_lcd_bit=0; which_lcd_bit<8; which_lcd_bit++) {                  \
 	bcm2835_gpio_write(PIN_SID, ((byte) << which_lcd_bit) & 0x80);             \
-	bcm2835_st_delay(0, 1);             /* T[DSS] data setup time and */       \
+	/*bcm2835_st_delay(0, 1);             /* T[DSS] data setup time and */       \
 	                                    /* T[WLS] SCLK low pulse width. */     \
 	bcm2835_gpio_write(PIN_SCLK, HIGH); /* SCLK's rising edge separated. */    \
-	bcm2835_st_delay(0, 1);             /* T[DHS] data hold time and */        \
+	/*bcm2835_st_delay(0, 1);             /* T[DHS] data hold time and */        \
 	                                    /* T[WHS] SCLK high pulse width. */    \
 	bcm2835_gpio_write(PIN_SCLK, LOW);                                         \
 } /* These also satisfy the hold and setup timings for A0 and CS_B. */
@@ -70,9 +70,9 @@ int init()
 		bcm2835_gpio_write(pins[i], LOW);
 	}
 	
-	bcm2835_st_delay(0, 1); /* RST_B low pulse width */
+	/*bcm2835_st_delay(0, 1); /* RST_B low pulse width */
 	bcm2835_gpio_write(PIN_RST_B, HIGH);
-	bcm2835_st_delay(0, 1); /* t[R]: reset time */
+	/*bcm2835_st_delay(0, 1); /* t[R]: reset time */
 	
 	send_byte(0xaf);   /*  1. display on (0xaf) or off (0xae)                 */
 	//send_byte(0x40); /*  2. first display line (0x40 | 6 bits)              */
