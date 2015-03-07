@@ -1,33 +1,37 @@
 #!/bin/bash
 
-yum install -y python3-devel SDL{,_gfx,image,mixer,net,Pango,sound,ttf}-devel
-yum install -y make automake gcc gcc-c++
-yum install -y mercurial git ***devtools***
+rm -rf /opt/bling /opt/pygame /opt/bcm2835* /lib/systemd/system/bling.service
 
-pip3 install virtualenv
+yum install -y python3-devel SDL{,_gfx,_image,_mixer,_net,_Pango,_sound,_ttf}-devel
+yum install -y gcc mercurial git python3-pip python3-numpy
+
+python3-pip install virtualenv
 
 mkdir -p /opt
 
 
 cd /opt
-git clone https://github.com/elliotnunn/bling
+	git clone https://github.com/elliotnunn/bling
+	hg clone https://bitbucket.org/pygame/pygame
+	wget -q -O - http://www.airspayce.com/mikem/bcm2835/bcm2835-1.38.tar.gz | tar -xzf -
 
+cd /opt/bcm2835*
+	./configure
+	make
+	make install
 
 cd /opt/bling
+	cp bling.service /lib/systemd/system/
+	systemctl daemon-reload
+	
+	wget -O chicago.bdf https://raw.githubusercontent.com/danfe/fonts/master/Chicago-12.bdf
+	
+	virtualenv blingenv
 
-wget -O chicago.bdf https://raw.githubusercontent.com/danfe/fonts/master/Chicago-12.bdf
-
-virtualenv blingenv
-source blingenv/bin/activate
-
-pip3 install numpy
-
-
-cd /opt
-hg clone https://bitbucket.org/pygame/pygame
-
+cd /opt/bling/hw/st7565
+	make
 
 cd /opt/pygame
-
-python3 setup.py build
-python3 setup.py install
+	source /opt/bling/blingenv/bin/activate
+	python3 setup.py build
+	python3 setup.py install
