@@ -27,6 +27,7 @@ cd /opt/bling
 	wget -O chicago.bdf https://raw.githubusercontent.com/danfe/fonts/master/Chicago-12.bdf
 	
 	virtualenv blingenv
+	cp -R /lib/python3*/site-packages/numpy blingenv/lib/python3*/site-packages/
 
 cd /opt/bling/hw/st7565
 	make

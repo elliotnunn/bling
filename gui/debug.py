@@ -18,7 +18,7 @@ class MainMenu(SexyMenu):
     def _setup(self, graf_props, **kwargs):
         menu_items = [
             self.itm("Music", True, MainMenu),
-            self.itm("Alarm settings", True, print, "First positional argument of print!"),
+            self.itm("Alarm settings. This is a very long string!", True, print, "First positional argument of print!"),
             self.itm("About", True, print, "First positional argument of print!"),
             self.itm("Backlight", True, print, "First positional argument of print!"),
             self.itm("Backlight", True, print, "First positional argument of print!"),
