@@ -70,9 +70,9 @@ int init()
 		bcm2835_gpio_write(pins[i], LOW);
 	}
 	
-	bcm2835_delayMicroseconds(1); /* RST_B low pulse width */
+	bcm2835_st_delay(0, 1); /* RST_B low pulse width */
 	bcm2835_gpio_write(PIN_RST_B, HIGH);
-	bcm2835_delayMicroseconds(1); /* t[R]: reset time */
+	bcm2835_st_delay(0, 1); /* t[R]: reset time */
 	
 	send_byte(0xaf);   /*  1. display on (0xaf) or off (0xae)                 */
 	//send_byte(0x40); /*  2. first display line (0x40 | 6 bits)              */
