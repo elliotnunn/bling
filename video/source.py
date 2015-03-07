@@ -32,10 +32,10 @@ class Source(Thread):
         self.have_bailed = False
         
         # set up two buffers
-        self.fbuff = pygame.Surface((self.width, self.height), depth=self.depth)
-        self.bbuff = pygame.Surface((self.width, self.height), depth=self.depth)
-        self.fbuff.set_palette(self.palette)
-        self.bbuff.set_palette(self.palette)
+        self.fbuff = pygame.Surface((self.width, self.height))#, depth=self.depth)
+        self.bbuff = pygame.Surface((self.width, self.height))#, depth=self.depth)
+        #self.fbuff.set_palette(self.palette)
+        #self.bbuff.set_palette(self.palette)
         # NOCOPY hack
         #self.skip_offering_buffer = False
         

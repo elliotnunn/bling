@@ -15,14 +15,14 @@
 
 
 from pygame import display, transform
-from video.sink import Sink
+#from video.sink import Sink
 
 import os
 
 
-class SDLDisplay(Sink):
+class SDLDisplay():
     def __init__(self):
-        Sink.__init__(self)
+        #Sink.__init__(self)
         display.init()
     
     def add_client(self, client):
@@ -35,7 +35,7 @@ class SDLDisplay(Sink):
     def notify_client_dirty(self):
         with self.client.buff_sem:
             surf = self.client.fbuff
-            transform.scale(surf, self.dispsurf.get_rect(), self.dispsurf)
+            transform.scale(surf, (self.dispsurf.get_width(), self.dispsurf.get_height()), self.dispsurf)
         
         display.flip()
         

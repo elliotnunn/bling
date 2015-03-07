@@ -1,0 +1,11 @@
+[Unit]
+Description=The Bling small-display GUI
+
+[Service]
+Type=simple
+Environment=VIRTUAL_ENV=/opt/bling/blingenv
+ExecStart=/opt/bling/blingenv/bin/python3 /opt/bling.py --hw=sdlout.SDLDisplay --hw=terminal.TermIn
+
+[Install]
+WantedBy=multi-user.target
+
