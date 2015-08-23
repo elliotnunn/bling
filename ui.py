@@ -17,10 +17,10 @@ import pygame
 import pygame.freetype
 import numpy
 
-from visual import Source
+from plumbing import Source, SexySource
 
 
-class SexyMenu(Source):
+class SexyMenu(SexySource):
     @classmethod
     def itm(cls, label, arrowed=False, handler=None, *args, **kwargs):
         return (label, arrowed, handler, args, kwargs)
@@ -31,6 +31,11 @@ class SexyMenu(Source):
         pygame.freetype.init()
         self.font = pygame.freetype.Font("Chicago-12.bdf")
         self.font.origin = True
+        
+        
+        self.scroll = None
+        
+        
         
         # flesh these out a bit
         self.title, self.items, self.isroot = title, menu_items, menu_isroot
@@ -45,14 +50,14 @@ class SexyMenu(Source):
         self.title_widget.set_content(self.title.upper(),
                                       self.font,
                                       title_decor,
-                                      (self.width, 13))
+                                      (self.size[0], 13))
         self.title_widget.set_oflow(TextBox.OFLOW_ELLIPSIS)
         self.title_widget.xy_in_parent = (0, -1)
         
         self.widgets.append(self.title_widget)
         
         # widgets for items, max of max_disp_items
-        self.max_disp = (self.height - 12)//13
+        self.max_disp = (self.size[1] - 12)//13
         self.scrollbar_w = 0 if len(self.items) <= self.max_disp else 7
         
         self.item_widgets = []
@@ -64,9 +69,9 @@ class SexyMenu(Source):
         # do we need a scrollbar?
         if self.scrollbar_w > 0:
             scrollbar = Scrollbar()
-            scrollbar.set_size((self.scrollbar_w-3, self.height - 12))
+            scrollbar.set_size((self.scrollbar_w-3, self.size[1] - 12))
             scrollbar.set_position(pos=0, wind=self.max_disp, total=len(self.items))
-            scrollbar.xy_in_parent = (self.width - 4, 12)
+            scrollbar.xy_in_parent = (self.size[0] - 4, 12)
             
             self.widgets.append(scrollbar)
             self.scrollbar_widget = scrollbar
@@ -96,7 +101,6 @@ class SexyMenu(Source):
             wgt.set_oflow(oflow, self.t)
     
     def _set_scroll(self, to):
-        if not hasattr(self, "scroll"): self.scroll = None
         frm, self.scroll = self.scroll, to
         
         if self.scrollbar_w > 0:
@@ -119,7 +123,7 @@ class SexyMenu(Source):
             
             if i in newly_shown:
                 itm = self.items[i]
-                wh = (self.width - self.scrollbar_w, 13)
+                wh = (self.size[0] - self.scrollbar_w, 13)
                 if itm[1]: # arrowed?
                     decor = TextBox.DECOR_RARROW
                 else:
@@ -134,28 +138,29 @@ class SexyMenu(Source):
         self._draw_widgets(surf)
         
         # Horizontal divider under title
-        surf.fill((0,0,0), (0, 10, self.width, 1))
+        surf.fill((0,0,0), (0, 10, self.size[0], 1))
         
         # Vertical divider left of the scrollber, if any
         if self.scrollbar_w > 0:
-                x = self.width - self.scrollbar_w + 1
-                surf.fill((0,0,0), (x, 10, 1, self.height - 10))
+                x = self.size[0] - self.scrollbar_w + 1
+                surf.fill((0,0,0), (x, 10, 1, self.size[1] - 10))
     
     def _event(self, event):
-        if event.type != pygame.USEREVENT: return None
+        try:
+            if event.type != pygame.USEREVENT: return None
+        except AttributeError:
+            return None
         
         if event.meaning == "directional":
             delta = {"up": -1, "down": 1}[event.content]
             
-            with self.big_lock:
-                self._set_selection(self.selection + delta)
+            self._set_selection(self.selection + delta)
             
             return True
         
         elif event.meaning == "abstract":
             if event.content == "ok":
-                with self.big_lock:
-                    label, arrow, handler, args, kwargs = self.items[self.selection]
+                label, arrow, handler, args, kwargs = self.items[self.selection]
                 
                 if hasattr(handler, "get_buffer"): # quacks like a Client
                     new_client = handler(*args, **kwargs)
@@ -177,12 +182,12 @@ class ProtoMenu(Source): # a bit of a mess, and poorly optimised
         #blk, wht = wht, blk # cheeky
         
         # draw the title
-        pygame.draw.rect(buffer, wht, (0, 0, self.width, self.titlearea_height))
+        pygame.draw.rect(buffer, wht, (0, 0, self.size[0], self.titlearea_height))
         title_width = self.font.get_rect(self.title)[2]
-        self.font.render_to(buffer, ((self.width - title_width) // 2, 9), self.title, fgcolor=blk, bgcolor=wht)
+        self.font.render_to(buffer, ((self.size[0] - title_width) // 2, 9), self.title, fgcolor=blk, bgcolor=wht)
         
         # draw a separating line after 10 pixels
-        pygame.draw.line(buffer, blk, (0, self.titlearea_height - 2), (self.width, self.titlearea_height - 2))
+        pygame.draw.line(buffer, blk, (0, self.titlearea_height - 2), (self.size[0], self.titlearea_height - 2))
         # equals 12 pixels, leaving room for 4 13-px lines of chicago
         
         # draw the "contents"
@@ -217,7 +222,7 @@ class ProtoMenu(Source): # a bit of a mess, and poorly optimised
         
         if self.scrollbar_visible:
             pygame.draw.rect(buffer, wht,(self.view_width, self.titlearea_height, self.scrollbararea_width, self.view_height))
-            pygame.draw.line(buffer, blk, (self.view_width + 1, self.titlearea_height - 1), (self.view_width + 1, self.height))
+            pygame.draw.line(buffer, blk, (self.view_width + 1, self.titlearea_height - 1), (self.view_width + 1, self.size[1]))
             pygame.draw.rect(buffer, blk, (self.view_width + 3, self.scrollbar_pos + self.titlearea_height, self.scrollbararea_width - 3, self.scrollbar_height))
         
         #return -1

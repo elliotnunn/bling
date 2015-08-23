@@ -14,37 +14,51 @@
 # along with Bling.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from video.sink import Sink
-
+from pygame import display, transform
 import os.path
 import ctypes
 
-
-class ST7565(Sink):
+class SdlWindow:
     def __init__(self):
-        Sink.__init__(self)
+        display.init()
+        display.set_caption(self.__class__.__name__)
+        self.buff = display.set_mode((128, 64))
+    
+    # This is a bit of a hack, because these clearly aren't asynchronous
+    def as_add_source(self, source):
+        self.source = source
+        source.as_set_parent(self)
+    
+    def as_dirty(self):
+        with self.source.buff_lock:
+            self.buff.blit(self.source.fbuff, (0,0))
         
+        display.flip()
+        
+        self.source.unthrottle()
+
+
+class ST7565:
+    def __init__(self):
         my_dir = os.path.dirname(os.path.abspath(__file__))
         lib_path = os.path.join(my_dir, "st7565/libbuff.so")
         self.libbuff = ctypes.CDLL(lib_path)
-        
-        self.libbuff.init()
-        self.libbuff.bklt(1)
     
-    def add_client(self, client):
+    def as_add_source(self, source):
         self.libbuff.init()
         self.libbuff.bklt(1)
         
-        self.client = client
-        client.parent_server = self
+        self.source = source
+        source.as_set_parent(self)
         
-        self.notify_client_dirty()
+        self.notify_source_dirty()
     
-    def notify_client_dirty(self):
-        with self.client.buff_sem:
-            self.libbuff.fling_buffer(self.client.fbuff._pixels_address)
-        
-        self.client.server_allows_draw()
-    
-    def remove_client(self, client):
+    def as_remove_source(self, source):
+        self.source.as_set_parent(None)
         self.libbuff.deinit()
+        
+    def as_dirty(self):
+        with self.source.buff_lock:
+            self.libbuff.fling_buffer(self.source.fbuff._pixels_address)
+        
+        self.source.unthrottle()
