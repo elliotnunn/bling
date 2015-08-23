@@ -34,7 +34,6 @@ class MainMenu(SexyMenu):
         SexyMenu._setup(self, title="Zeitgeber", menu_isroot=True, menu_items=mni, **kwargs)
 
 
-
 out = SdlWindow()
 inp = SdlInput()
 

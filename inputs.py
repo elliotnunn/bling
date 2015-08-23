@@ -98,7 +98,8 @@ class SdlInput:
         
         elif evt.type == pg.KEYDOWN or evt.type == pg.KEYUP:
             
-            kinetic = {pg.KEYDOWN: 'in', pg.KEYUP: 'out'}
+            kinetic = {pg.KEYDOWN: 'in', pg.KEYUP: 'out'}[evt.type]
+            key = evt.key
             
             if key == 273:
                 src.as_input('direction', dy=-1, kinetic=kinetic)

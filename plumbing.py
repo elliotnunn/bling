@@ -102,10 +102,14 @@ class Source:
         event, args, kwargs = event_tuple
         
         try:
-            getattr(self, '_as_' + event)(*args, **kwargs)
-            print("%s %s %s to %s" % (event, args, kwargs, self.__class__.__name__))
+            handler = getattr(self, '_as_' + event)
         except AttributeError:
-            print("FAILED %s %s %s to %s" % (event, args, kwargs, self.__class__.__name__))
+            worked = '(unhandled) '
+        else:
+            worked = ''
+            handler(*args, **kwargs)
+        
+        print('%s%s << %s%s %s' % (worked, self.__class__.__name__, event, args, kwargs))
     
     def _as_set_parent(self, parent):
         self.parent = parent
@@ -158,12 +162,12 @@ class Compositor(Sink, Source):
         
         self.viewport = self.viewport - (128,0)
     
-    def _as_source_dirty(self, source):
+    def _as_dirty(self):
         pass
     
     def _as_input(self, *args, **kwargs):
         if len(self.sources) >= 1:
-            self.sources[-1].as_input(*args, **kwargs)
+            self.sources[-1][0].as_input(*args, **kwargs)
     
     def _loop(self):
         self.sources = []
