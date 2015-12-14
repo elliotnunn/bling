@@ -16,17 +16,82 @@
 import pygame
 import pygame.freetype
 import numpy
+import sys
+import time
 
-from plumbing import Source, SexySource
+from plumbing import Source, EventQueue
+from threading import Thread
 
 
-class SexyMenu(SexySource):
+def justify(text, font, width=128):
+    words = text.strip().split()
+    lines = []
+    thisline = ''
+    
+    while words:
+        nextword = words[0]
+        
+        if thisline == '':
+            test = nextword
+        else:
+            test = thisline + ' ' + nextword
+        
+        if font.get_rect(test)[2] <= width:
+            # The whole line including the next word will fit in the width
+            print('adding entire: %s' % words[0])
+            words.pop(0)
+            thisline = test
+        else:
+            # Can't fit word. Try to fit some of it
+            # then commit this line regardless.
+            
+            if font.get_rect(nextword)[2] > width:
+                # The offending word is too big for *any* line, so truncate it
+                leave = 1
+                while font.get_rect(test[:-leave])[2] > width:
+                    leave += 1
+                
+                thisline = test[:-leave]
+                words[0] = words[0][-leave:]
+            
+            print("finishing line now:\n%s" % thisline)
+            
+            lines.append(thisline)
+            thisline = ''
+    
+    if thisline: lines.append(thisline)
+    
+    return lines
+
+def typeset(text, font, width=128, bg=(255,)*3, fg=(0,)*3, spacing=1):
+    if not font.origin:
+        raise RuntimeError
+    
+    lines = justify(text, font, width)
+    print(lines)
+    
+    line_height = 13 #int(round((font.ascender + font.descender) * spacing))
+    
+    surf = pygame.Surface((width, line_height * len(lines)))
+    surf.fill(bg)
+    
+    y = 9 #font.ascender
+    for line in lines:
+        font.render_to(surf, (0, y), line, fgcolor=fg)
+        y = y + line_height
+    
+    return surf
+
+
+class SexyMenu(Source):
+    class ItemSelected(Exception): pass
+    
     @classmethod
     def itm(cls, label, arrowed=False, handler=None, *args, **kwargs):
         return (label, arrowed, handler, args, kwargs)
         # this is the format for the tuples in self.items
     
-    def _setup(self, title="", menu_items=[], menu_isroot=False, **kwargs):
+    def __init__(self, title="", menu_items=[], menu_isroot=False, **kwargs):
         # boilerplate
         pygame.freetype.init()
         self.font = pygame.freetype.Font("Chicago-12.bdf")
@@ -35,7 +100,9 @@ class SexyMenu(SexySource):
         
         self.scroll = None
         
-        
+        self.nxt = 0
+        self.widgets = []
+        self.t = 0
         
         # flesh these out a bit
         self.title, self.items, self.isroot = title, menu_items, menu_isroot
@@ -50,14 +117,14 @@ class SexyMenu(SexySource):
         self.title_widget.set_content(self.title.upper(),
                                       self.font,
                                       title_decor,
-                                      (self.size[0], 13))
+                                      (self._get_size()[0], 13))
         self.title_widget.set_oflow(TextBox.OFLOW_ELLIPSIS)
         self.title_widget.xy_in_parent = (0, -1)
         
         self.widgets.append(self.title_widget)
         
         # widgets for items, max of max_disp_items
-        self.max_disp = (self.size[1] - 12)//13
+        self.max_disp = (self._get_size()[1] - 12)//13
         self.scrollbar_w = 0 if len(self.items) <= self.max_disp else 7
         
         self.item_widgets = []
@@ -69,15 +136,17 @@ class SexyMenu(SexySource):
         # do we need a scrollbar?
         if self.scrollbar_w > 0:
             scrollbar = Scrollbar()
-            scrollbar.set_size((self.scrollbar_w-3, self.size[1] - 12))
+            scrollbar.set_size((self.scrollbar_w-3, self._get_size()[1] - 12))
             scrollbar.set_position(pos=0, wind=self.max_disp, total=len(self.items))
-            scrollbar.xy_in_parent = (self.size[0] - 4, 12)
+            scrollbar.xy_in_parent = (self._get_size()[0] - 4, 12)
             
             self.widgets.append(scrollbar)
             self.scrollbar_widget = scrollbar
         
         self._set_scroll(0)
         self._set_selection(0)
+        
+        super(SexyMenu, self).__init__(**kwargs)
     
     def _set_selection(self, to):
         if to < 0 or to >= len(self.items): return
@@ -123,7 +192,7 @@ class SexyMenu(SexySource):
             
             if i in newly_shown:
                 itm = self.items[i]
-                wh = (self.size[0] - self.scrollbar_w, 13)
+                wh = (self._get_size()[0] - self.scrollbar_w, 13)
                 if itm[1]: # arrowed?
                     decor = TextBox.DECOR_RARROW
                 else:
@@ -131,28 +200,66 @@ class SexyMenu(SexySource):
                 
                 wgt.set_content(itm[0], self.font, decor, wh)
     
-    # This just straightforwardly wraps a few widgets
-    def _draw_frame(self, surf, first):
+    def _draw_frame(self):
+        self.t = time.time()
+        surf = self.bbuff
+        
+        first = True
+        
         if first: surf.fill((255,255,255))
         
-        self._draw_widgets(surf)
+        deadline = sys.maxsize
+        for w in self.widgets:
+            d = w.draw(surf, w.xy_in_parent, self.t)
+            if d != None: deadline = min(deadline, d)
+        if deadline == sys.maxsize: deadline = None
         
         # Horizontal divider under title
-        surf.fill((0,0,0), (0, 10, self.size[0], 1))
+        surf.fill((0,0,0), (0, 10, self._get_size()[0], 1))
         
         # Vertical divider left of the scrollber, if any
         if self.scrollbar_w > 0:
-                x = self.size[0] - self.scrollbar_w + 1
-                surf.fill((0,0,0), (x, 10, 1, self.size[1] - 10))
+                x = self._get_size()[0] - self.scrollbar_w + 1
+                surf.fill((0,0,0), (x, 10, 1, self._get_size()[1] - 10))
+        
+        self._flip()
+        
+        return deadline
     
     def _as_input(self, kind, kinetic='', dx=0, dy=0, **k):
         if kind == 'direction' and dy != 0 and kinetic != 'in':
             self._set_selection(self.selection - dy)
         
-        elif kind == 'select':
+        elif kind == 'select' and kinetic != 'in':
+            self.title_widget.set_oflow(TextBox.OFLOW_ELLIPSIS)
+            
             label, arrow, handler, handler_args, handler_kwargs = self.items[self.selection]
             
-            handler(*handler_args, **handler_kwargs)
+            result = handler(*handler_args, **handler_kwargs)
+            
+            if True: #hasattr(result, 'fbuff'):
+                self.parent.as_push(result)
+        
+        elif kind == 'escape' and kinetic != 'in':
+            self.parent.as_pop(self)
+        
+        raise Source.UpdateDisplay
+    
+    def _loop(self):
+        self._wait_next_event(only=['set_parent'])
+        
+        # There's a good rationale for doing some spinning here 
+        # if loading the items is a long process. Elegant.
+        deadline = self._draw_frame()
+        self.parent.as_source_ready(self)
+        
+        while True:
+            try:
+                self._wait_next_event(deadline)
+            except (EventQueue.Timeout, Source.UpdateDisplay):
+                
+                deadline = self._draw_frame()
+            # except self.ThingSelected: ...
 
 
 class Widget:
@@ -184,9 +291,9 @@ class TextBox(Widget):
     DECOR_RARROW   = 1
     DECOR_LARROW   = 2
     
-    SCROLL_DELAY_MS = 1500
+    SCROLL_DELAY = 0.5
     SCROLL_STEP_PX = 1
-    SCROLL_STEP_MS = 80
+    SCROLL_STEP = 0.06
     SCROLL_GOES_AROUND = 3
     
     ELLIPSIS_W = 11
@@ -263,7 +370,7 @@ class TextBox(Widget):
             to = self.OFLOW_TRUNCATE
         
         if to == self.OFLOW_SCROLL and self.oflow != self.OFLOW_SCROLL:
-            self.oflow_scroll_start_t = t + self.SCROLL_DELAY_MS
+            self.oflow_scroll_start_t = t + self.SCROLL_DELAY
             self.oflow_scroll_x = 0
         
         self.oflow = to
@@ -333,7 +440,7 @@ class TextBox(Widget):
                 # Step forwards
                 self.oflow_scroll_x += self.SCROLL_STEP_PX
                 self.oflow_scroll_x %= self.surf_w
-                nxt = t + self.SCROLL_STEP_MS
+                nxt = t + self.SCROLL_STEP
             
             #if self.oflow_scroll_x >= self.text_full_w: # Hit the end
             #    display_as = self.oflow = self.OFLOW_ELLIPSIS

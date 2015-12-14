@@ -14,7 +14,8 @@
 # along with Bling.  If not, see <http://www.gnu.org/licenses/>.
 
 
-import pygame as pg
+import pygame
+pg = pygame
 
 import _thread
 import time
@@ -22,248 +23,417 @@ import traceback
 import sys
 
 
-class Source:
+class EventQueue:
+    class Event:
+        def __init__(self, funcname, args, kwargs):
+            self.funcname = funcname
+            self.retval = (funcname, args, kwargs)
+            self.pointer = None
     
-    def _draw_widgets(self, surf=None, which=None):
-        if surf == None: surf = self.bbuff # potentially dangerous
-        if which == None: which = self.widgets
-        if not hasattr(which, "__iter__"): which = [which]
-        for w in which:
-            nxt = w.draw(surf, w.xy_in_parent, self.t)
-            if nxt != None: self.nxt = min(self.nxt, nxt)
+    class Timeout(Exception): pass
     
-    def __init__(self, size=None, **k):
-        self.size = size
-        if self.size == None:
-            dispinf = pg.display.Info()
-            self.size = (dispinf.current_w, dispinf.current_h)
+    def prt(self):
+        t = self.front
+        while t:
+            print('%s %s' % (t.funcname, t == self.back))
+            t = t.pointer
         
-        #HACK
-        self.nxt = 0
+        print('')
+        print('%s %s' % (self.latch.locked(), self.back_lock.locked()))
+    
+    def __init__(self):
+        self.back_lock = _thread.allocate_lock()
+        self.latch     = _thread.allocate_lock()
+        self.latch.acquire()
         
-        self.parent = None
+        self.front = self.back = self.Event(None, None, None)
+    
+    def __release_latch(self):
+        try:
+            self.latch.release()
+        except RuntimeError:
+            pass
+    
+    def push(self, funcname, args, kwargs):
+        event = self.Event(funcname, args, kwargs)
         
-        self.fbuff = pg.Surface(self.size)
-        self.bbuff = pg.Surface(self.size)
+        with self.back_lock:
+            self.back.pointer = event
+            self.back = event
+            
+            self.__release_latch()
+    
+    def wait(self, deadline=None, only=None):
+        prev = self.front # don't need to lock because self.front never changes
         
-        self.evtq = []
+        while True:
+            if deadline == None or deadline == sys.maxsize:
+                timeout = -1
+            else:
+                timeout = max(deadline - time.clock(), 0)
+            
+            if timeout == 0:
+                got = self.latch.acquire(0)
+            else:
+                got = self.latch.acquire(1, timeout=timeout)
+            
+            if not got:
+                raise self.Timeout
+            
+            this = prev.pointer
+            
+            with self.back_lock:
+                if only == None or this.funcname in only:
+                    prev.pointer = this.pointer # Bridge over this node
+                    
+                    if this == self.back: # If this was the back node
+                        self.back = prev  # then make prev the back node.
+                    else:                      # If this was NOT the back node
+                        self.__release_latch() # then there are more to handle.
+                    
+                    return this.retval
+                
+                else:
+                    if this != self.back: # Next iteration, check the next node
+                        self.__release_latch()
+            
+            prev = this
+
+
+class Actor:
+    def __init__(self, **kwargs):
+        self.evtq = EventQueue()
         
-        self.evtq_latch = _thread.allocate_lock()
-        self.evtq_latch.acquire()
-        self.evtq_lock = _thread.allocate_lock()
-        self.buff_lock = _thread.allocate_lock()
-        self.throttle = _thread.allocate_lock()
+        super().__init__(**kwargs)
         
         _thread.start_new_thread(self._loop, ())
     
-    # Shim layer; treats calls to unimplemented as_* as events
     def __getattr__(self, funcname):
         if funcname.startswith('as_'):
             def callme(*args, **kwargs):
-                self.event(funcname[3:], *args, **kwargs)
+                self.evtq.push(funcname[3:], args, kwargs)
             return callme
         else:
             raise AttributeError
     
-    def event(self, name, *args, **kwargs):
-        with self.evtq_lock:
-            self.evtq.append((name, args, kwargs))
+    def _wait_next_event(self, deadline=None, only=None):
+        # The EventQueue handles the tricky waiting logic
+        event = self.evtq.wait(deadline=deadline, only=only)
         
-        try: self.evtq_latch.release()
-        except RuntimeError: pass
+        return self.__handle_event(event)
     
-    def _wait_next_event(self, timeout=-1):
-        if timeout >= 0:
-            self.evtq_latch.acquire(timeout=(timeout/1000))
-        else:
-            self.evtq_latch.acquire()
-        
-        with self.evtq_lock:
-            evt = self.evtq.pop(0)
-            if len(self.evtq) > 0: self.evtq_latch.release()
-        
-        return evt
-    
-    def unthrottle(self):
-        try: self.throttle.release()
-        except: pass
-    
-    def _throttle(self):
-        self.throttle.acquire()
-    
-    def _flip(self):
-        with self.buff_lock:
-            self.fbuff, self.bbuff = self.bbuff, self.fbuff
-        
-        if self.parent != None:
-                self.parent.as_dirty()
-    
-    def _handle_event(self, event_tuple):
+    def __handle_event(self, event_tuple):
         event, args, kwargs = event_tuple
+        
+        if event != 'dirty':
+            print('%s.%s%s%s' % (self.__class__.__name__, event, args, kwargs))
         
         try:
             handler = getattr(self, '_as_' + event)
         except AttributeError:
-            worked = '(unhandled) '
+            pass
         else:
-            worked = ''
-            handler(*args, **kwargs)
+            return handler(*args, **kwargs)
+
+class Source(Actor):
+    
+    class UpdateDisplay(Exception): pass
+    class Quit(Exception): pass
+    
+    def _get_size(self):
+        #dispinf = pg.display.Info()
+        #return (dispinf.current_w, dispinf.current_h)
+        return(128,64)
+    
+    def __init__(self, **kwargs):
+        self.buff_lock = _thread.allocate_lock()
+        self._throttle_lock = _thread.allocate_lock()
         
-        print('%s%s << %s%s %s' % (worked, self.__class__.__name__, event, args, kwargs))
+        super().__init__(**kwargs)
+    
+    def unthrottle(self):
+        try:
+            self._throttle_lock.release()
+        except RuntimeError:
+            pass
+    
+    def _flip(self):
+        self._throttle_lock.acquire()
+        
+        with self.buff_lock:
+            self.fbuff, self.bbuff = self.bbuff, self.fbuff
+        
+        self.parent.as_dirty(self)
+    
+    def _as_quit(self):
+        raise self.Quit()
     
     def _as_set_parent(self, parent):
+        self.fbuff = pg.Surface(self._get_size())
+        self.bbuff = pg.Surface(self._get_size())
+        
         self.parent = parent
 
 
-class SexySource(Source):
+class Animator(): pass
+
+
+class LinearAnimator(Animator):
     
-    def __init__(self, **k):
-        self.kwargs = k
-        self.widgets = []
-        self.t = 0
-        super(SexySource, self).__init__(**k)
+    def __init__(self, start):
+        self.start = self.at = start
+        self.finished = True
     
-    def _loop(self, *k):
-        self._setup(**self.kwargs)
-        
-        while 1:
-            self._handle_event(self._wait_next_event())
-            
-            self._throttle()
-            
-            self._draw_frame(self.bbuff, True)
-            
-            self._flip()
-
-
-class Sink(): pass
-
-
-class Compositor(Sink, Source):
+    def aim(self, finish, duration=1):
+        self.start = self.at
+        self.finish = finish
+        self.duration = duration
+        self.finished = False
+        self.t_start = None
     
-    def _as_add_source(self, source):
-        self.viewport = self.viewport + (128,0)
+    def step_to(self, t):
+        if self.finished:
+            return self.at
         
-        self.sources.append((source, self.viewport))
+        if self.t_start == None:
+            self.t_start = t
         
+        frac = (t - self.t_start) / self.duration
+            
+        if frac < 1:
+            self.at = tuple(self.start[i]*(1-frac) + self.finish[i]*frac for i in range(len(self.start)))
+        else:
+            self.at = self.finish
+            self.finished = True
+        
+        return self.at        
+
+
+class SdlWindow:
+    def __init__(self):
+        pygame.init()
+        pygame.display.set_caption(self.__class__.__name__)
+        self.buff = pygame.display.set_mode((128, 64))
+    
+    # This is a bit of a hack, because these clearly aren't asynchronous
+    def as_add_source(self, source):
+        self.source = source
         source.as_set_parent(self)
-        source.as_fully_onscreen()
-        if len(self.sources) >= 2:
-            self.sources[-2].as_offscreen()
     
-    def _as_remove_source(self, source):
-        for i in range(0, len(self.sources)):
-            if self.sources[i][0] == source:
-                self.sources.pop(i)
-                break
-        
-        source.as_set_parent(None)
-        source.as_offscreen()
-        
-        self.viewport = self.viewport - (128,0)
-    
-    def _as_dirty(self):
+    def as_source_ready(self, source):
         pass
     
-    def _as_input(self, *args, **kwargs):
-        if len(self.sources) >= 1:
-            self.sources[-1][0].as_input(*args, **kwargs)
+    def as_dirty(self, source):
+        with self.source.buff_lock:
+            self.buff.blit(self.source.fbuff, (0,0))
+        
+        pygame.display.flip()
+        
+        self.source.unthrottle()
+
+
+class Compositor(Source):
+    
+    # Possible values for source.comp_stage
+    UNREADY  = 1
+    READY    = 2
+    UNPERSON = 3
+    
+    def __init__(self, **kwargs):
+        self.sources = []
+        self.delta = (0,0)
+        
+        super().__init__(**kwargs)
+    
+    def _as_quit():
+        try:
+            for s in self.sources:
+                s.as_quit()
+        except RuntimeError:
+            pass
+        
+        super()._as_quit()
+    
+    def _draw_frame(self):
+        self.bbuff.fill((0,0,0))
+        
+        for s in self.sources:
+            if s.comp_stage == self.UNREADY: continue
+            
+            with s.buff_lock:
+                self.bbuff.blit(s.fbuff, (s.comp_x - self.view_x,
+                                          s.comp_y - self.view_y))
+            
+            s.unthrottle()
+        
+        self._flip()
+    
+    def _as_dirty(self, source):
+        if source.comp_stage == self.UNREADY:
+            source.comp_stage = self.READY
+            self._source_became_ready(source)
+        
+        raise Source.UpdateDisplay
+    
+    def _source_became_ready(self, source):
+        pass
+
+
+def StripCompositor(Compositor):
+    
+    def _as_set_sources(self, sources):
+        for i in range(sources):
+            s = sources[i]
+            
+            s.comp_x = 0
+            s.comp_y = i * self._get_size[1]
+            s.comp_stage = self.UNREADY
+            
+            s.as_set_parent(self)
+        
+        self.sources = sources
+        self.view_animator = LinearAnimator((0, 0))
+        self.mode = 0
+        self.sources_reported_ready = 0
+    
+    def _as_select(self, mode):
+        self.mode = mode
+        self.foremost = self.sources[mode]
+        
+        new_xy = (self.foremost.comp_x, self.foremost.comp_y)
+        self.view_animator.aim(new_xy)
+        
+        raise Source.UpdateDisplay
+    
+    def _as_input(self, kind, **kwargs):
+        if kind == 'direction':
+            newmode = self.mode + kwargs['dx']
+            if 0 <= newmode < len(self.sources):
+                self._as_select(newmode)
+            
+        else:
+            self.foremost.as_input(kind, **kwargs)
+    
+    def _draw_frame(self):
+        self.view_x, self.view_y = self.view_animator.step_to(time.clock())
+        
+        super()._draw_frame()
+        
+        if self.view_animator.finished:
+            return None
+        else:
+            return 0
     
     def _loop(self):
-        self.sources = []
-        self.viewport = (-128,0)
+        self._wait_next_event(only=['set_parent'])
+        
+        self._wait_next_event(only=['set_sources'])
+        
+        while len(s for s in self.sources if s.comp_stage == self.UNREADY) > 0:
+            try:
+                self._wait_next_event(only=['dirty'])
+            except Source.UpdateDisplay:
+                pass
+        
+        deadline = self._draw_frame()
         
         while True:
-            frame_deadline = False
-            
-            self._handle_event(self._wait_next_event())
-            
-            # Calculate and dwar
-            source_count = len(self.sources)
-            topmost_obscurer = 0
-            
-            for i in reversed(range(0, source_count)):
-                source, topleft, *misc = self.sources[i]
-                bottomright = topleft + source.size
-                if not(topleft > self.viewport) and not(bottomright < (self.viewport+self.size)):
-                    topmost_obscurer = i
-                    break
-            
-            for i in range(0, source_count):
-                source, topleft, *misc = self.sources[i]
-                
-                # Composite this buffer onto the back buffer
-                if i >= topmost_obscurer:
-                    with source.buff_lock:
-                        self.bbuff.blit(source.fbuff, (topleft[0]-self.viewport[0], topleft[1]-self.viewport[1]))
-                
-                # Do this regardless of whether it is in view
-                source.unthrottle()
-            
-            self._flip()
-    
-    def __init__(self):
-        Source.__init__(self)
-        Sink.__init__(self)
+            try:
+                self._wait_next_event(deadline)
+            except (EventQueue.Timeout, Source.UpdateDisplay):
+                deadline = self._draw_frame()
 
 
-class FabCompositor(Compositor):
-    def pre_frame(self):
-        # we reverse iterate, lest we delete the 2nd client of 3 then try to access the 3rd
-        animating = False
-        for i in reversed(range(0, len(self.clients))):
-            if i > len(self.clients)-1: print("oh crap!")
-            # The tuples in self.clients are of the form (client, x_pos, y_pos) by default.
-            # This subclass extends them to (client, x_pos, y_pos, animation),
-            # where animation = (start_time_in_ms, duration_in_ms, direction), and
-            # direction is -1 for sliding out to the right, and 1 for sliding in from the right
-            (client, x, y, animation) = self.clients[i][0:4]
-            
-            if animation != None:
-                (start_time_ms, duration_ms, direction) = animation #unpack the tuple in the tuple in self.clients
-                time_elapsed_ms = pg.time.get_ticks() - start_time_ms
-                
-                if time_elapsed_ms >= duration_ms: #put a stop to this animation
-                    animation = None
-                    if direction == -1: # this was a fuck-off animation
-                        self.clients.pop(i) # DANGEROUS, and bit me on the ass!
-                        client.parent_server = None
-                        client.event("offscreen")
-                    else: # the client remains visible once the animation ends
-                        self.clients[i] = (client, 0, 0, None)
-                        if len(self.clients) >= 2: self.clients[-2][0].event("covered")
-                        client.event("fully-onscreen")
-                        
-                else:
-                    progress = time_elapsed_ms / duration_ms * self.width
-                    if direction == -1: # ie sliding out to the right
-                        x = progress
-                    elif direction == 1: # sliding in from the right
-                        x = self.width - progress
-                        
-                    self.clients[i] = (client, x, 0, animation)
-                    
-                    animating = True
-        
-        return animating
+class StackCompositor(Compositor):
     
-    def add_client(self, client, anim_duration_ms=200):
-        self.big_lock.acquire()
-        self.clients.append((client, 0, 0, (pg.time.get_ticks(), anim_duration_ms, 1)))
-        self.big_lock.release()
+    def _remove_unpersons(self):
+        kill = [s for s in self.sources if s.comp_stage == self.UNPERSON]
+        self.sources = [s for s in self.sources if not s in kill]
         
-        client.parent_server = self
-        
-        try: self.evt_sem.release()
-        except: pass
+        for k in kill:
+            k.as_fully_offscreen()
     
-    def remove_client(self, client, anim_duration_ms=200):
-        self.big_lock.acquire()
-        for i in reversed(range(0, len(self.clients))):
-            if self.clients[i][0] == client:
-                self.clients[i] = (self.clients[i][0], 0, 0, (pg.time.get_ticks(), anim_duration_ms, -1))
+    def _aim_animator(self):
+        for s in reversed(self.sources):
+            if s.comp_stage == self.READY:
+                self.view_animator.aim((s.comp_x, s.comp_y))
                 break
-        self.big_lock.release()
+    
+    def _as_set_parent(self, parent):
+        super()._as_set_parent(parent)
+        self.view_animator = LinearAnimator((0, 0))
+    
+    def _as_push(self, s):
+        self._remove_unpersons()
         
-        try: self.evt_sem.release()
-        except: pass
+        s.comp_x = sum([s._get_size()[0]+2 for s in self.sources])
+        s.comp_y = 0
+        s.comp_stage = self.UNREADY
+        
+        s.as_set_parent(self)
+        self.sources.append(s)
+    
+    def _source_became_ready(self, source):
+        if source != self.sources[0]:
+            self._aim_animator()
+    
+    def _as_input(self, *args, **kwargs):
+        for source in reversed(self.sources):
+            if source.comp_stage != self.UNPERSON:
+                source.as_input(*args, **kwargs)
+                break
+    
+    def _as_pop(self, s):
+        s.comp_stage = self.UNPERSON
+        self._aim_animator()
+        raise Source.UpdateDisplay
+    
+    def _draw_frame(self):
+        self.view_x, self.view_y = self.view_animator.step_to(time.time())
+        
+        if self.view_animator.finished:
+            self._remove_unpersons()
+        
+        super()._draw_frame()
+        
+        if self.view_animator.finished:
+            return None # no deadline
+        else:
+            return 0
+    
+    def _loop(self):
+        self._wait_next_event(only=['set_parent'])
+        
+        self._wait_next_event(only=['push'])
+        
+        try:
+            self._wait_next_event(only=['dirty'])
+        except Source.UpdateDisplay:
+            pass
+        
+        deadline = self._draw_frame()
+        
+        while True:
+            try:
+                self._wait_next_event(deadline)
+            except EventQueue.Timeout:
+                deadline = self._draw_frame()
+            except Source.UpdateDisplay: # just update the display, but first
+                # flush all other pending 'dirty' events
+                while True:
+                    try:
+                        self._wait_next_event(only=['dirty'], deadline=0)
+                    except EventQueue.Timeout: break
+                    except Source.UpdateDisplay: pass
+                deadline = self._draw_frame()
+                       
+class CallStackCompositor(Compositor):
+    
+    def _as_push(self, new_source):
+        self.sources.append(new_source)
+        +
+    
+    def _loop(self):
+        self._wait_next_event(only=['set_parent'])
+        
+        self._wait_next_event(only=[''])
